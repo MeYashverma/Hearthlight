@@ -2,3 +2,6 @@
 # can be downloaded and tested straight from the repository. Proofing
 # artifacts stay out.
 *.proof.png
+
+# Python bytecode from the tools
+__pycache__/
