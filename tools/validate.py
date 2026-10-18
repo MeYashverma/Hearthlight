@@ -72,21 +72,48 @@ def main() -> int:
 
     workdir = Path(tempfile.mkdtemp(prefix="hearthlight-validate-"))
     failures = 0
+    compiled: dict[tuple[str, str], Path] = {}
 
     try:
         for wrapper in wrappers:
             stage = STAGE_BY_SUFFIX[wrapper.suffix]
             expanded = expand(wrapper, shaders)
-            target = workdir / f"{wrapper.parent.name}__{wrapper.name}"
+            # glslang picks the stage from the extension, which also lets the
+            # linker below infer stages without an explicit -S.
+            target = workdir / f"{wrapper.parent.name}__{wrapper.stem}.{stage}"
             target.write_text(expanded, encoding="utf-8")
+            compiled[(wrapper.parent.name, wrapper.stem)] = target
 
             result = subprocess.run(
-                [args.glslang, "-S", stage, str(target)],
+                [args.glslang, str(target)],
                 capture_output=True,
                 text=True,
             )
             status = "ok" if result.returncode == 0 else "FAILED"
-            print(f"{status:>6}  {wrapper.relative_to(repo)}")
+            print(f"{status:>6}  compile  {wrapper.relative_to(repo)}")
+            if result.returncode != 0:
+                failures += 1
+                print(result.stdout, end="")
+                print(result.stderr, end="")
+
+        # Linking the vertex and fragment stages catches everything a per-stage
+        # compile cannot: mismatched varyings, missing outputs, flat qualifier
+        # mismatches. Iris links the pair at load time, so a pack that fails
+        # here would fail in game.
+        for (folder, name), vert in sorted(compiled.items()):
+            if vert.suffix != ".vert":
+                continue
+            frag = compiled.get((folder, name + ""))
+            frag = workdir / f"{folder}__{name}.frag"
+            if not frag.exists():
+                continue
+            result = subprocess.run(
+                [args.glslang, "-l", str(vert), str(frag)],
+                capture_output=True,
+                text=True,
+            )
+            status = "ok" if result.returncode == 0 else "FAILED"
+            print(f"{status:>6}  link     shaders/{folder}/{name}")
             if result.returncode != 0:
                 failures += 1
                 print(result.stdout, end="")
@@ -98,7 +125,7 @@ def main() -> int:
             shutil.rmtree(workdir, ignore_errors=True)
 
     total = len(wrappers)
-    print(f"\n{total - failures}/{total} programs compiled")
+    print(f"\n{total - failures}/{total} shader stages and links ok")
     return 1 if failures else 0
 
 

@@ -1,11 +1,18 @@
 /*
     Hearthlight - coloured light propagation
 
-    One Jacobi iteration per shadow update. Every air cell takes the average of
-    its six neighbours from the previous frame, decayed by LIGHT_DECAY; emitter
-    cells are pinned to their own colour. Light therefore spreads one block per
-    frame and fades out after roughly ten blocks, which is the range where a
-    colour cast is visible at all.
+    Light floods outwards one voxel per shadow update. Each air cell takes the
+    component-wise maximum of its six neighbours from the previous frame and
+    multiplies it by LIGHT_FALLOFF, and emitter cells are pinned to their own
+    colour.
+
+    Why a max and not an average: averaging six neighbours is a Jacobi
+    iteration of the diffusion equation. It needs O(r^2) frames to reach
+    distance r and the steady state falls off like exp(-r/4), so a torch only
+    tints the three or four blocks around it. Taking the maximum instead
+    propagates exactly one voxel per frame, and the per-voxel falloff alone
+    sets the range: 0.8^n drops below the 0.02 tint threshold at 17 blocks,
+    which matches the vanilla block light radius of a torch.
 
     The volume moves with the player. Sampling the previous buffer at
     `pos + (floor(cameraPosition) - floor(previousCameraPosition))` cancels that
@@ -44,18 +51,19 @@ bool inside(ivec3 p) {
         && all(lessThan(p, ivec3(VOXEL_SIZE)));
 }
 
+// Brightest neighbour, per channel, so two lights of different colours mix
+// instead of one of them winning outright.
 vec3 gather_light(sampler3D light_sampler, ivec3 pos) {
-    ivec3 centre = clamp(pos, ivec3(0), ivec3(VOXEL_SIZE - 1));
-    vec3 sum = texelFetch(light_sampler, centre, 0).rgb;
+    vec3 best = vec3(0.0);
 
     for (int i = 0; i < 6; ++i) {
         ivec3 neighbour = pos + FACE_OFFSETS[i];
         if (inside(neighbour)) {
-            sum += texelFetch(light_sampler, neighbour, 0).rgb;
+            best = max(best, texelFetch(light_sampler, neighbour, 0).rgb);
         }
     }
 
-    return sum * (1.0 / 7.0);
+    return best;
 }
 
 void update_light(
@@ -74,8 +82,8 @@ void update_light(
         ivec3 shift = ivec3(
             floor(cameraPosition) - floor(previousCameraPosition)
         );
-        vec3 spread = gather_light(light_sampler, pos + shift) * LIGHT_DECAY;
-        light += min(spread, vec3(1.0));
+        light = min(gather_light(light_sampler, pos + shift), vec3(1.0))
+            * LIGHT_FALLOFF;
     }
 
     imageStore(light_img, pos, vec4(clamp(light, 0.0, 1.0), 1.0));

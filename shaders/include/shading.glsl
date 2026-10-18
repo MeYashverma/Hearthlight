@@ -129,7 +129,13 @@ vec3 get_blocklight_tint(vec3 scene_pos, vec3 normal) {
     // Normalise to a pure hue. The lightmap already carries the intensity, this
     // volume only says what colour the light is.
     vec3 tint = clamp(colour / brightness, 0.0, 2.5);
-    return mix(vec3(1.0), tint, COLORED_LIGHT_STRENGTH);
+
+    // Fade the tint in rather than switching it on at the edge of the volume.
+    // Without this the 17 block cutoff is a visible ring on large surfaces.
+    float strength = COLORED_LIGHT_STRENGTH
+        * smoothstep(0.02, 0.10, brightness);
+
+    return mix(vec3(1.0), tint, strength);
 }
 
 // Coloured light from a torch in the hand. `heldBlockLightColor` is white for

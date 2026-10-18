@@ -44,10 +44,11 @@ const float SHADOW_DEPTH_SCALE = 0.2;
 const int VOXEL_SIZE = 64;
 const int VOXEL_HALF = 32;
 
-// How much light survives one voxel of travel in the flood fill. With one
-// iteration per frame this gives a decay length of about ten blocks, which is
-// the range at which coloured light is actually noticeable.
-const float LIGHT_DECAY = 0.99;
+// How much light survives one voxel of travel. The flood fill takes the
+// brightest neighbour, so this is a plain per-block falloff: 0.8^n drops below
+// the 0.02 tint threshold at 17 blocks, close to the 14 block radius of a
+// torch in vanilla. Raise it towards 1.0 to make coloured light reach further.
+const float LIGHT_FALLOFF = 0.80;
 
 // Tint strength of coloured block light on top of the vanilla lightmap.
 const float COLORED_LIGHT_STRENGTH = 0.88;

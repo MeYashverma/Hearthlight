@@ -62,7 +62,7 @@ Quality knobs are `const`s at the top of `shaders/include/settings.glsl`:
 | `SHADOW_PCF_TAPS` | 12 | 4 is a hard shadow, 24 is soft |
 | `SHADOW_SOFTNESS` | 1.15 | filter radius in shadow texels |
 | `VOXEL_SIZE` | 64 | coloured light volume, 1 block per voxel |
-| `LIGHT_DECAY` | 0.99 | lower = shorter reach for coloured light |
+| `LIGHT_FALLOFF` | 0.80 | per-block falloff; 0.8 reaches 17 blocks |
 | `COLORED_LIGHT_STRENGTH` | 0.88 | how strongly block light tints a surface |
 | `HANDHELD_LIGHT_STRENGTH` | 0.55 | brightness of the light in your hand |
 
@@ -94,21 +94,32 @@ colour can never make a cave brighter than vanilla says it should be.
 
 ## Validating
 
-`tools/validate.py` expands the pack's `#include`s and runs `glslangValidator`
-over every program wrapper in `shaders/world*`:
-
 ```sh
 python3 tools/validate.py --glslang /path/to/glslangValidator
+python3 tools/simulate.py            # needs numpy
 ```
 
-This checks that the shaders compile, which is not the same as checking that
-they look right: there is no way to render Minecraft from this repository.
+`validate.py` expands the pack's `#include`s and compiles every program wrapper
+in `shaders/world*`, then links each vertex/fragment pair the way Iris does at
+load time. 39 stages and 18 links pass.
+
+`simulate.py` ports the pure-maths parts of the shaders — the flood fill in
+`shadowcomp.csh` and `shade_surface()` in `shading.glsl` — to Python, reading
+its constants straight out of the GLSL, and runs them on synthetic scenes: a
+torch in open air, a sealed room, day/night, torch versus soul torch, and the
+shadow distortion and depth maths.
+
+That is not a substitute for running the game, but it catches the mistakes that
+matter: the first version of the flood fill averaged its neighbours, which
+looked plausible and gave coloured light a range of three blocks instead of
+sixteen. Switching to a max with a per-block falloff fixed both the range and
+the fill time (8 blocks in 8 frames instead of 179).
 
 ## Known limitations
 
-- Coloured light spreads one block per shadow update, so a room takes a second
-  or two to fill with colour after a torch is placed. This is the same trade
-  off Photon makes.
+- Coloured light spreads one block per shadow update, so a room fills with
+  colour in well under a second, but the field is only refreshed when the
+  shadow map updates (every other frame by default).
 - The coloured light volume is 64 blocks wide and centred on the player; light
   sources further away contribute nothing.
 - Only block light is coloured. Sunlight, ambient sky light, entities and the
