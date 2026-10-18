@@ -1,179 +1,89 @@
 # Hearthlight
 
-A small, hand written Iris shader pack for Minecraft Java **1.21.x / 26.2**.
-It keeps the vanilla look and spends its budget on the two things that change
-how the world reads: real sun and moon shadows, and coloured light from torches,
-lanterns, lava, portals and everything else that glows.
+Voxel ray-traced local lighting, sun/moon shadows and specular highlights for
+**Minecraft Java 26.2 + Iris** (developed against Iris 1.11.4 / Sodium 0.9.2, OpenGL 4.3+,
+Vulkan is not supported by Iris).
 
-Designed to run on modest hardware (target: Radeon 760M class integrated
-graphics at 1080p) rather than to win a screenshot contest.
+Torches, lanterns, lava, glowstone and every other emitter become real point lights:
+they fall off with distance, respect surface orientation, are blocked by walls and ceilings,
+can be coloured, and a torch in your hand lights and shadows the world as you walk.
+On top of that the sun and moon cast real shadows, and polished materials catch a
+specular highlight. Everything else (textures, sky, water, clouds, fog, UI) stays vanilla.
 
-## Features
-
-- **Directional shadows** from a 2048² shadow map with a Vogel disk PCF kernel,
-  the same radial distortion Iris and Photon use, and a slope scaled normal
-  bias. The shadow frustum follows the player and snaps to the block grid, so
-  shadows do not swim while you walk.
-- **Coloured block light** from a 64×64×64 voxel volume centred on the player.
-  Emitters seed their colour, a Jacobi flood fill in a compute shader spreads it
-  around corners, and the result tints the vanilla lightmap. Walls, ceilings and
-  foliage cast the light properly; glass and leaves let it through.
-- **Coloured held light**: a torch in the hand lights the ground warm, a soul
-  torch blue, a copper lantern green-ish.
-- **Vanilla faithful**: no tone mapping, no bloom, no TAA, no "cinematic" fog.
-  Textures, the lightmap and the sun colour all stay in the gamma space vanilla
-  uses, so the pack looks like the game with better light, not like a different
-  game. The sky, sun, moon, stars and clouds are passed through untouched.
-- **Every dimension is handled.** The overworld gets sun/moon shadows, the
-  nether gets coloured light from lava and fire with no shadow pass at all, and
-  the end is ambient only.
-- **Cheap by construction**: no deferred pass, no composite pass, no full screen
-  post processing, and no final pass. Terrain is shaded once, in the gbuffer
-  pass, and Iris copies the result to the screen.
-
-## Requirements
-
-| | |
-|---|---|
-| Minecraft | 1.21.x, tested against Iris for 26.2 |
-| Loader | Fabric or NeoForge with **Iris** |
-| Sodium | **Strongly recommended** (all development targets Sodium's terrain path) |
-| GPU | Anything with image load/store and compute shaders (GL 4.3+) |
-
-Distant Horizons and Voxy are **not** supported yet: neither `dh_terrain` nor
-`voxy.json` ships with the pack, so LOD terrain will be missing or unshaded when
-those mods are enabled. Turn them off, or wait for a later version.
-
-## Installation
-
-Download [`Hearthlight.zip`](Hearthlight.zip) (the green **Download** button on
-that page, or `curl -L -O https://github.com/MeYashverma/Hearthlight/raw/main/Hearthlight.zip`
-once this is merged), drop it into `.minecraft/shaderpacks/`, then select
-**Hearthlight** in `Options → Video Settings → Shader Packs`.
-
-The zip is rebuilt from the sources with `tools/package.sh`; it contains the
-`shaders/` folder at its root, plus this readme and the licence.
-
-## Settings
-
-Quality knobs are `const`s at the top of `shaders/include/settings.glsl`:
-
-| Setting | Default | Notes |
-|---|---|---|
-| `shadowMapResolution` | 2048 | 1024 / 1536 for integrated GPUs |
-| `shadowDistance` | 112 | blocks; 64–80 is plenty at render distance 8 |
-| `sunPathRotation` | −35° | tilts the shadow frustum |
-| `SHADOW_PCF_TAPS` | 12 | 4 is a hard shadow, 24 is soft |
-| `SHADOW_SOFTNESS` | 1.15 | filter radius in shadow texels |
-| `VOXEL_SIZE` | 64 | coloured light volume, 1 block per voxel |
-| `LIGHT_FALLOFF` | 0.80 | per-block falloff; 0.8 reaches 17 blocks |
-| `COLORED_LIGHT_STRENGTH` | 0.88 | how strongly block light tints a surface |
-| `HANDHELD_LIGHT_STRENGTH` | 0.55 | brightness of the light in your hand |
-| `DEBUG_VIEW` | 0 | 0 = normal, 1 = shadow, 2 = light volume, 3 = normals, 4 = sun, 5 = raw voxels |
-
-Colours live in `shaders/include/light_colors.glsl`, indexed by the block IDs
-assigned in `shaders/block.properties`. Adding a light emitting block means
-adding it to both files (or reusing an existing slot).
+## Install
+1. Install Iris for 26.2 (Fabric or NeoForge) with the Sodium version it requires (Iris 1.11.2 + Sodium 0.9.1 and Iris 1.11.4 + Sodium 0.9.2 are both valid 26.2 pairs).
+2. Drop `Hearthlight.zip` into `.minecraft/shaderpacks/` (Options > Video Settings > Shader Packs > Open Folder).
+3. Select it. Requires OpenGL 4.3 (compute, SSBO, image load/store). macOS is not supported.
 
 ## How it works
+| Stage | What happens |
+|---|---|
+| `shadow.*` | The shadow pass is repurposed as a **voxelizer**. Each terrain quad is collapsed onto one pixel and its fragment writes the block into two 128^3 images: occupancy and light (colour + level). Iris culls this pass to a 128-block box around you. Those same images later feed the sun shadows, so no depth map is rendered. |
+| `prepare_a/b.csh` | Count how many voxels the shadow pass wrote. If it wrote (almost) nothing, the next stage switches on its fallback automatically. |
+| `gbuffers_*` | Write the vanilla-lit colour (vanilla lightmap, AO, face shading and fog intact) with the *block-light share reduced* near you, plus normals, albedo, a mask and the specular material class. **Fallback voxelizer:** `gbuffers_terrain` also writes visible emitters/occluders into the same volume when the shadow pass produced nothing. Water/glass/hand stay vanilla-lit. |
+| `deferred_a/b/c.csh` | Clear counters, scan the volume for emitters into an SSBO light list (up to 2048), bin every light into the 8^3-block cells its range touches (32 per cell). |
+| `deferred.fsh` | Per pixel: trace one ray toward the sun or moon through the voxel volume and take the missing direct light back out of the vanilla-lit colour; rank the local lights in its cell, ray-trace the strongest N (Amanatides-Woo DDA), add `albedo x light`, accumulate over time (reprojected) so soft shadows are smooth, then add the sun/moon specular lobe. Held torches are extra lights. |
+| `final.fsh` | Hue-preserving highlight normalisation. Anything vanilla could show is untouched. |
 
-```
-shadow.vsh/.fsh        depth only, plus voxelization of the terrain into voxel_img
-shadowcomp.csh         one flood fill iteration, writes light_img_a/b (ping-pong)
-gbuffers_terrain       albedo * lightmap + sun/moon * shadow, tinted by the light volume
-gbuffers_water         the same, plus specular and an animated normal
-gbuffers_textured_lit  entities, items, particles, weather and the hand
-gbuffers_textured      sky, clouds, sun, moon, stars (passthrough)
-gbuffers_basic         sky plane, void plane, block outline (passthrough)
-```
+Light level and emission come straight from Minecraft (`at_midBlock.w`), so modded emitters work;
+known vanilla emitters get hand-picked colours, unknown ones take a hue hint from their texture.
 
-The shadow vertex shader is the only place that sees every terrain vertex, so it
-is also what fills the voxel volume: `1` for an opaque block, `32..79` for an
-emitter, nothing for anything light can pass through. The compute shader then
-averages six neighbours per cell, pins emitters, and samples the previous frame
-at a camera-shifted position so the light field stays anchored in the world.
+Sun and moon shadows reuse the occupancy volume rather than a second shadow map, so they are
+one ray per pixel and cost nothing extra to set up. Their direction is rebuilt in player space
+from `gbufferModelViewInverse` — Iris' `sunPosition` is in *view* space, and using it directly
+makes the light direction (and therefore every shadow) rotate with the camera.
 
-The lighting code samples the *vanilla lightmap* for intensity and only takes
-the hue from the voxel volume, which keeps the pack cheap: a wrong or stale
-colour can never make a cave brighter than vanilla says it should be.
+Specular is a GGX lobe with Smith geometry and Schlick Fresnel, tinted by the sun/moon colour
+and masked by the shadow ray. Only full cubes in the specular classes take part, listed at the
+bottom of `block.properties`: metals (10200), polished stone/quartz/amethyst (10201),
+ice/snow (10202) and glazed terracotta (10203). Everything else keeps a faint default sheen.
 
-## Validating
+## Settings
+Profiles **Low / Medium / High / Ultra** set the three performance knobs. Individual options:
+- **Light Intensity / Light Range / Color Strength**: brightness, reach, and how far from vanilla-warm lights drift (default 0.75 keeps it tasteful).
+- **Vanilla Fill Light**: share of vanilla's shadowless block light kept as ambient fill. Lower = darker, more contrasty corners.
+- **Daylight Suppression**: tones local lights down under open sky by day. Never affects night or caves.
+- **Shadow Softness**: 0 = hard and exact; higher = softer penumbra (temporal smoothing).
+- **Lights Per Pixel** (main perf control), **Shadow Ray Steps**.
+- **Sun Shadows** (on/off), **Sun Shadow Strength** (how much direct light a shadow removes),
+  **Sun Shadow Steps** (how far a shadow ray reaches, see limitations).
+- **Specular** (strength of the sun/moon highlight on the materials above).
 
-```sh
-python3 tools/validate.py --glslang /path/to/glslangValidator
-python3 tools/iris_compat.py          # needs pcpp: pip install pcpp
-python3 tools/simulate.py             # needs numpy
-```
-
-- **`validate.py`** expands the includes, injects the macros Iris injects,
-  compiles every program with glslang and links each vertex/fragment pair the way
-  Iris does at load time. 39 stages and 18 links pass.
-- **`iris_compat.py`** runs the pack through a real C preprocessor (`pcpp`, the
-  job JCPP does inside Iris) with Iris' standard defines applied, then compiles
-  the result — plus a direct check for identifiers that collide with Iris' own
-  `#define`s.
-- **`simulate.py`** ports the pure maths (the flood fill, `shade_surface()`, the
-  shadow bias and distortion) to Python and runs it on synthetic scenes.
-
-### Reserved names
-
-Iris `#define`s a set of names in *every* program, including
-`MC_RENDER_STAGE_<PHASE>` (one per render phase, value = its ordinal), `IS_IRIS`,
-`MC_VERSION`, `MC_GL_VERSION`, `DH_BLOCK_*`, `MC_<GLEXTENSION>` and others.
-
-Declaring any of them in a pack is fatal in a non-obvious way: Hearthlight's
-first upload declared `const int MC_RENDER_STAGE_NONE = 0;`, which Iris rewrote
-to `const int 0 = 0;` and refused to load:
-
-```
-basic: ParseCancellationException: line 91:10 no viable alternative at input 'const int 0'
-```
-
-Use the names, never declare them. `tools/iris_defines.py` holds the list;
-`validate.py` and `iris_compat.py` both fail if the pack declares one.
-
-## Troubleshooting
-
-Everything visual is controlled by one switch. Set `DEBUG_VIEW` at the bottom of
-`shaders/include/settings.glsl`, reload shaders, and look at the ground:
-
-| Value | Screen shows | What it tells you |
-|---|---|---|
-| `3` | rainbow that follows the block shapes | the pack *is* shading terrain |
-| `1` | white = lit, black = shadowed | whether the shadow map is being sampled |
-| `2` | coloured blobs around torches | whether the light volume is filling |
-| `4` | a flat colour | the scene-space sun direction |
-| `5` | red / green / blue blocks | what the shadow pass stored: red = solid, green = emitter, blue = transparent, black = air |
-
-`5` is the important one for coloured light. If the ground is **black**
-everywhere, the shadow pass is not writing the voxel volume at all (the fill has
-nothing to work with). If it is red, the volume is fine and the problem is
-downstream in the propagation.
-
-If `3` shows vanilla-looking terrain, the pack's programs are not running at all
-(check `latest.log` for `[Iris]` errors). If `1` is white everywhere, no shadow
-map is being rendered. If `2` is black around a torch, the compute flood fill is
-not running.
-
-Note that **Voxy and Distant Horizons are not supported**: with either mod
-enabled the LOD terrain is drawn by the mod, not by this pack. Test with them
-disabled.
+## Debug views (Settings > Debug View)
+- **4 Status panel** (start here): six squares in the top-left corner. All should be **green** while you look at terrain holding a torch.
+  1. shadow-pass voxelizer wrote geometry (red = fallback voxelizer is carrying the load)
+  2. emitters found in the volume
+  3. lights binned near you
+  4. G-buffer mask present at screen centre (red = look at terrain, not sky; if still red the pack's G-buffer programs are not running)
+  5. a held light is reported by Iris (hold a torch)
+  6. the ground under you is voxelized
+- **5 G-buffer check**: green = lit by the pack, magenta = drawn by a fallback program (never lit).
+- **3 Voxelisation check**: surfaces should look green. **1** lights-per-cell heat map. **2** lighting only.
 
 ## Known limitations
+- Occluders are **full-cube faces only**: slabs/stairs count as full blocks; fences, panes, plants, torches do not block. Leaves block ~55%, glass 0%. Entities and block entities neither cast nor receive per-light shadows from voxels (they *are* lit).
+- Diffuse only, no bounce light, no colored flood-fill: light does not wrap around corners except through the vanilla fill.
+- Sun shadows are traced through the same 1-block voxel volume: they are crisp and blocky
+  rather than soft, only exist within 64 blocks of you, and only full cubes cast them.
+  A ray reaching past `Sun Shadow Steps` blocks (about 32 at the default) is treated as lit,
+  which is what makes very low sun angles cast shorter shadows than they should.
+- Water and stained glass get vanilla light only (no local lights yet). Particles and clouds are vanilla.
+- Volume is fixed at 128 blocks (+-64). Beyond ~45 blocks lighting blends back to vanilla.
+- More than 32 lights overlapping one 8^3 cell, or 2048 lights in view, drops some lights.
+- Voxelization runs a shadow-pass draw of nearby terrain every frame: expect a cost similar to a small shadow map.
 
-- Coloured light spreads one block per shadow update, so a room fills with
-  colour in well under a second, but the field is only refreshed when the
-  shadow map updates (every other frame by default).
-- The coloured light volume is 64 blocks wide and centred on the player; light
-  sources further away contribute nothing.
-- Only block light is coloured. Sunlight, ambient sky light, entities and the
-  hand are tinted by the vanilla lightmap.
-- `shadowcolor0` is not used, so stained glass and portals do not colour the
-  shadows themselves.
-- Distant Horizons and Voxy LOD terrain are not shaded by the pack.
+## Mod compatibility notes
+- **Dynamic-light mods (e.g. LambDynamicLights)**: they raise vanilla block light near held torches, which stacks with Hearthlight's own held-light. Disable them when judging the look.
+- **LOD mods (e.g. Voxy)**: distant LOD terrain is not part of the voxel volume and may not be lit by this pack.
+- **Chunk-culling mods** can remove geometry the voxelizer needs. If Debug View 3 shows red patches, test without them.
 
-## License
-
-MIT, see `LICENSE`. The pack is written from scratch; it was developed with
-Photon and Complementary Reimagined as references for Iris behaviour, but no
-shader code is copied from them.
+## Troubleshooting
+- **Nothing lights up**: open Debug View 4 and note which squares are red (see above). Square 1 red alone is fine, the fallback covers it (shadows are then limited to what the camera can see). Check `latest.log` for Iris errors about `shadow`, images or SSBO; confirm OpenGL 4.3+.
+- **Torch pools look too dim/bright**: Light Intensity, then Vanilla Fill.
+- **Shimmering penumbrae**: lower Shadow Softness or raise Lights Per Pixel.
+- Light leaks at long range: raise Shadow Ray Steps.
+- **Sun shadows look wrong or follow the camera**: they should not — the direction is camera
+  independent. Check that `SUN_SHADOW_STEPS` is not 0 and that Debug View 3 shows green
+  (red means nothing is voxelized, so there is nothing to shadow against).
+- **No specular anywhere**: the material classes need `block.properties`; if you renamed or
+  merged that file the highlight silently disappears. Metals are the obvious test.

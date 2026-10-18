@@ -1,0 +1,34 @@
+screen.LIGHTING=Lighting
+screen.SHADOWS=Sun and Moon Shadows
+screen.MATERIALS=Specular
+screen.PERFORMANCE=Performance
+profile.LOW=Low
+profile.MEDIUM=Medium
+profile.HIGH=High
+profile.ULTRA=Ultra
+option.LIGHT_INTENSITY=Light Intensity
+option.LIGHT_INTENSITY.comment=Brightness of torches, lanterns, lava and other block lights.
+option.LIGHT_RANGE=Light Range
+option.LIGHT_RANGE.comment=Scales how far each light reaches (1.00 = about the vanilla light level in blocks).
+option.COLOR_STRENGTH=Color Strength
+option.COLOR_STRENGTH.comment=0 = every light is vanilla warm. 1 = each light uses its own colour (soul fire blue, froglights, etc.).
+option.VANILLA_FILL=Vanilla Fill Light
+option.VANILLA_FILL.comment=How much of vanilla's shadowless block light is kept as soft ambient fill. Lower = darker shadows and corners.
+option.DAY_SUPPRESS=Daylight Suppression
+option.DAY_SUPPRESS.comment=Reduces local light under open sky during the day. It never dims lights at night or underground.
+option.SHADOW_SOFTNESS=Shadow Softness
+option.SHADOW_SOFTNESS.comment=0 = razor sharp shadows. Higher = softer penumbra (uses temporal smoothing).
+option.SHADOW_RAY_STEPS=Shadow Ray Steps
+option.SHADOW_RAY_STEPS.comment=Maximum blocks a shadow ray walks. Lower is faster but long rays may leak light.
+option.MAX_LIGHTS_PER_PIXEL=Lights Per Pixel
+option.MAX_LIGHTS_PER_PIXEL.comment=Strongest N lights ray-traced for every pixel. This is the main performance control.
+option.SUN_SHADOWS=Sun Shadows
+option.SUN_SHADOWS.comment=Trace one ray per pixel through the voxel volume toward the sun or moon.
+option.SUN_SHADOW_STRENGTH=Sun Shadow Strength
+option.SUN_SHADOW_STRENGTH.comment=How much of the direct sunlight a shadow removes. 0 leaves the vanilla-lit look untouched.
+option.SUN_SHADOW_STEPS=Sun Shadow Steps
+option.SUN_SHADOW_STEPS.comment=How far a sun ray reaches, in blocks. Low values cut long shadows short at low sun angles.
+option.SUN_SPECULAR=Specular
+option.SUN_SPECULAR.comment=Strength of the sun and moon highlight on metals, polished stone, ice and glazed terracotta.
+option.DEBUG_VIEW=Debug View
+option.DEBUG_VIEW.comment=1 = lights per cell heat map, 2 = lighting only, 3 = voxelisation check (surfaces green), 4 = status panel (6 tiles, all green when working), 5 = G-buffer mask check (green = ok).

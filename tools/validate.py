@@ -67,7 +67,7 @@ def main() -> int:
     repo = Path(__file__).resolve().parent.parent
     shaders = repo / "shaders"
     wrappers = sorted(
-        p for p in shaders.glob("world*/*") if p.suffix in STAGE_BY_SUFFIX
+        p for p in shaders.glob("*") if p.suffix in STAGE_BY_SUFFIX
     )
 
     if not wrappers:

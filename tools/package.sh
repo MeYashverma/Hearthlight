@@ -7,7 +7,7 @@ set -eu
 
 cd "$(dirname "$0")/.."
 
-out=Hearthlight.zip
+out=tools/Hearthlight.zip
 rm -f "$out"
 
 # -X keeps the zip deterministic (no extra file attributes).
