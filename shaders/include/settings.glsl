@@ -4,6 +4,11 @@
 // Coloured block light is the whole point of the pack, so it is always on.
 #define COLORED_LIGHTS
 
+// The pack never reads the shadow colour buffers (shadows are depth only), so
+// there is no reason to clear them every frame.
+const bool shadowcolor0Clear = false;
+const bool shadowcolor1Clear = false;
+
 // -----------------------------------------------------------------------------
 // Quality settings. Iris reads these const directives while loading the pack,
 // so changing them here is the supported way to trade quality for performance.

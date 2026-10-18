@@ -10,6 +10,8 @@
 
 uniform sampler2D gtexture;
 
+/* RENDERTARGETS: 0 */
+
 in vec2 uv;
 flat in int material_mask;
 

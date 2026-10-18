@@ -98,7 +98,7 @@ float get_shadow(vec3 scene_pos, vec3 normal, float NoL) {
         vec2 offset = vogel_disk(i, SHADOW_PCF_TAPS, rotation) * radius;
         vec2 coord = clamp(uv + offset, vec2(0.0), vec2(1.0));
         float stored = texelFetch(shadowtex1, ivec2(coord * resolution), 0).r;
-        lit += step(reference - 2.0e-4, stored);
+        lit += step(reference - 6.0e-5, stored);
     }
     lit /= float(SHADOW_PCF_TAPS);
 
