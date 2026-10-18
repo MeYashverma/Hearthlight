@@ -1,0 +1,59 @@
+screen.SUN=Sun & Moon
+screen.LIGHTS=Local Lights
+screen.SKY=Sky & Atmosphere
+screen.VIEW=View
+screen.PERFORMANCE=Performance
+profile.LOW=Low
+profile.MEDIUM=Medium
+profile.HIGH=High
+profile.ULTRA=Ultra
+option.SUN_STRENGTH=Sunlight Strength
+option.SUN_STRENGTH.comment=Strength of the directional sun. Higher = stronger, darker-contrast shadows.
+option.MOON_STRENGTH=Moonlight Strength
+option.MOON_STRENGTH.comment=Strength of the directional moon at night (also shadow casting). Varies with moon phase.
+option.AMBIENT_DAY=Daytime Ambient
+option.AMBIENT_DAY.comment=Brightness of shadowed areas in daylight. Lower = deeper shadows.
+option.SUN_SHADOW_QUALITY=Sun Shadow Filtering
+option.SUN_SHADOW_QUALITY.comment=Number of shadow samples. Higher = smoother shadow edges.
+option.SUN_SHADOW_SOFTNESS=Sun Shadow Softness
+option.SUN_SHADOW_SOFTNESS.comment=Width of sun/moon shadow edges.
+option.sunPathRotation=Sun Path Tilt
+option.sunPathRotation.comment=Tilts the sun's path so noon shadows are not straight down.
+option.shadowMapResolution=Shadow Resolution
+option.shadowMapResolution.comment=Shadow map size. Higher = sharper shadows from fences, leaves and entities, but slower.
+option.shadowDistance=Shadow Distance
+option.shadowDistance.comment=How far from the player sun/moon shadows are drawn (blocks).
+option.LIGHT_INTENSITY=Light Intensity
+option.LIGHT_INTENSITY.comment=Brightness of torches, lanterns, lava, portals and other block lights.
+option.LIGHT_RANGE=Light Range
+option.LIGHT_RANGE.comment=Scales how far each light reaches (1.00 = about the vanilla light level in blocks).
+option.COLOR_STRENGTH=Color Strength
+option.COLOR_STRENGTH.comment=0 = every light is vanilla warm. 1 = each light uses its own colour (soul fire blue, portals purple, froglights...).
+option.VANILLA_FILL=Light Spread
+option.VANILLA_FILL.comment=Soft, coloured fill that follows Minecraft's own light spreading around corners and through doors.
+option.DAY_SUPPRESS=Daylight Suppression
+option.DAY_SUPPRESS.comment=Reduces local light under open sky by day. Never affects night or caves.
+option.SHADOW_SOFTNESS=Local Shadow Softness
+option.SHADOW_SOFTNESS.comment=0 = razor sharp torch shadows. Higher = softer penumbra (uses temporal smoothing).
+option.SHADOW_RAY_STEPS=Local Shadow Ray Steps
+option.SHADOW_RAY_STEPS.comment=Maximum half-block steps a torch-shadow ray walks. Lower is faster but long rays may leak light.
+option.MAX_LIGHTS_PER_PIXEL=Lights Per Pixel
+option.MAX_LIGHTS_PER_PIXEL.comment=Strongest N local lights ray-traced for every pixel. Main performance control for lights.
+option.DEBUG_VIEW=Debug View
+option.DEBUG_VIEW.comment=1 lights-per-cell heat map, 2 lighting only, 3 voxelisation check (surfaces green), 4 status panel (6 squares, all green when working), 5 G-buffer mask (green = ok), 6 sun/moon shadow only.
+option.SUN_WARMTH=Sun Warmth
+option.SUN_WARMTH.comment=Shifts sunlight toward gold. 0 keeps it neutral, 2 is a strong sunset gold. Moonlight is not affected.
+option.AMBIENT_NIGHT=Night Ambient
+option.AMBIENT_NIGHT.comment=Brightness of vanilla skylight after dark. 1.00 is vanilla; raise it if nights are too dark for you.
+option.DAWN_DUSK_TINT=Sunrise & Sunset Tint
+option.DAWN_DUSK_TINT.comment=How strongly the sky light warms at dawn and dusk. 0 leaves it neutral.
+option.RAIN_DARKENING=Rain Darkening
+option.RAIN_DARKENING.comment=How much direct sunlight is lost in rain or snow.
+option.HORIZON_HAZE=Horizon Haze
+option.HORIZON_HAZE.comment=Softens the sky into the fog colour near the horizon. Higher is a wider haze band.
+option.HAND_BRIGHTNESS=Hand Brightness
+option.HAND_BRIGHTNESS.comment=Brightness of your hand and held item. Raise it if the held item looks too dark at night.
+option.FOG_DISTANCE=Fog Distance
+option.FOG_DISTANCE.comment=Pushes the render-distance fog further out (or in). 1.00 matches the vanilla render distance.
+option.EXPOSURE=Exposure
+option.EXPOSURE.comment=Final brightness. 1.00 is untouched; every channel is still clamped so no colour clips.
