@@ -41,7 +41,7 @@ option.MAX_LIGHTS_PER_PIXEL.comment=Strongest N local lights ray-traced for ever
 option.DEBUG_VIEW=Debug View
 option.DEBUG_VIEW.comment=1 lights-per-cell heat map, 2 lighting only, 3 voxelisation check (surfaces green), 4 status panel (6 squares, all green when working), 5 G-buffer mask (green = ok), 6 sun/moon shadow only.
 option.LIGHT_SS_SHADOWS=Fine Light Shadows
-option.LIGHT_SS_SHADOWS.comment=Trace torchlight through the depth buffer so players, mobs, fences, panes and dropped items cast a real shadow. Their half-block voxel cannot hold those shapes.
+option.LIGHT_SS_SHADOWS.comment=Experimental: trace torchlight through the depth buffer so players, mobs and dropped items cast a shadow. The depth buffer only holds the nearest surface, so objects between you and the lit ground (fences, the lamp itself) can cast a phantom shadow across it. Off by default.
 option.LIGHT_SS_COUNT=Fine Shadow Lights
 option.LIGHT_SS_COUNT.comment=How many of the strongest nearby lights use the precise ray. Lower is cheaper.
 option.LIGHT_SS_STEPS=Fine Shadow Steps

@@ -30,7 +30,6 @@ uniform mat4 gbufferModelViewInverse;
 uniform mat4 gbufferPreviousModelView;
 uniform mat4 gbufferPreviousProjection;
 uniform mat4 shadowModelView;
-uniform mat4 shadowModelViewInverse;
 uniform mat4 shadowProjection;
 uniform vec3 cameraPosition;
 uniform vec3 previousCameraPosition;
@@ -275,12 +274,13 @@ void main() {
     // ---- sun / moon ----------------------------------------------------------------------
     vec3 sunDirW = normalize(mat3(gbufferModelViewInverse) * sunPosition);
     float sunH = sunDirW.y;
-    // shadowLightPosition is in *shadow* view space (it includes sunPathRotation),
-    // so it must come back through shadowModelViewInverse -- feeding it through
-    // gbufferModelViewInverse tilts the light by the sun path (25 deg by default)
-    // and loses the moon entirely.
+    // shadowLightPosition is the sun (day) or moon (night) in *gbuffer* view space:
+    // Iris' CelestialUniforms builds it with getGbufferModelView(), not the shadow
+    // camera's matrix, so gbufferModelViewInverse is the matrix that undoes it.
+    // (Using shadowModelViewInverse here rotates the light by the shadow camera and
+    // paints large, wrongly-oriented shadows across the world.)
     bool haveShadowLight = dot(shadowLightPosition, shadowLightPosition) > 1e-4;
-    vec3 Lw = normalize(haveShadowLight ? mat3(shadowModelViewInverse) * shadowLightPosition : sunDirW);
+    vec3 Lw = normalize(mat3(gbufferModelViewInverse) * (haveShadowLight ? shadowLightPosition : sunPosition));
     float dayAmt = smoothstep(-0.10, 0.35, sunH);
 
     vec3 lightCol;

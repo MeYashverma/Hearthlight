@@ -21,7 +21,10 @@
 #define SHADOW_SOFTNESS 0.50 // [0.00 0.25 0.50 0.75 1.00]
 #define SHADOW_RAY_STEPS 64 // [32 48 64 96]
 #define MAX_LIGHTS_PER_PIXEL 4 // [2 4 6 8]
-#define LIGHT_SS_SHADOWS 1 // [0 1]
+// Experimental. The depth buffer only stores the nearest surface, so anything
+// standing between the camera and the lit floor (a fence, the lamp itself)
+// projects a phantom shadow across it. Off by default for that reason.
+#define LIGHT_SS_SHADOWS 0 // [0 1]
 #define LIGHT_SS_COUNT 2 // [1 2 3 4]
 #define LIGHT_SS_STEPS 16 // [8 16 24 32]
 

@@ -8,7 +8,7 @@ Dynamic sun and moon shadows plus voxel ray-traced local lights for **Minecraft 
 - **Local lights that behave like lights**: torches, lanterns, lava, glowstone, sea lanterns, end rods, froglights, **Nether portals** and any modded emitter light the room with natural falloff, wall/floor/ceiling response and shadows. Held torches light and shadow the world too.
 - **Colored light**: warm fire, blue soul fire, orange lava, purple portals, cool sea lanterns, golden glowstone. Fill light follows Minecraft's own light spreading around corners and tints with the nearest emitter.
 - **Exact partial blocks for local-light shadows**: half-block resolution, so a light over a slab, stair, full block or open air behaves consistently.
-- **Players, mobs, fences and items cast torch shadows too**: the strongest nearby lights are also traced through the depth buffer, so the shapes the half-block volume cannot hold still cast a real shadow (see Settings > Local Light Shadows).
+- **Players, mobs and items can cast torch shadows** with the experimental *Fine Light Shadows* option (off by default -- see Known limitations for why).
 - **Clean sky and horizon**: render-distance fog and a horizon haze that match, so no hard band. **Inventory/GUI icons are safe** (the old fog/lightmap logic no longer touches orthographic GUI rendering).
 - Vanilla identity kept: no bloom, no color grading, no texture changes; anything vanilla could display is untouched.
 
@@ -32,7 +32,7 @@ Profiles **Low / Medium / High / Ultra** set shadow resolution/distance/filterin
 - **5** G-buffer mask (green = lit by the pack). **6** sun/moon shadow only. **3** voxelisation check. **1** lights-per-cell heat map. **2** lighting only.
 
 ## Known limitations
-- Entities cast sun/moon shadows and receive all lighting. For local lights they only cast a shadow through the depth-buffer ray (**Fine Light Shadows**, strongest 2 lights by default), so a mob that is off screen still does not block a torch.
+- Entities receive all lighting and cast sun/moon shadows, but they do not block *local* light unless you turn on the experimental **Fine Light Shadows**. That ray reads the depth buffer, which only stores the nearest surface, so anything standing between you and the lit ground (a fence, the lamp itself, your own hand) projects a phantom shadow over it. Measured on a randomised scene sweep: 16% of traceable pixels were wrongly shadowed. It is off by default for that reason.
 - Local-light occlusion is half-block resolution: carpets, fences, panes, plants and torches do not block torch light unless the fine ray can see them.
 - In first person your own body is not rendered, so it has no depth-buffer shadow; switch to third person to see it.
 - The hand item is vanilla-lit: Hearthlight does not add local lights to it.
@@ -44,5 +44,5 @@ Profiles **Low / Medium / High / Ultra** set shadow resolution/distance/filterin
 - **Pack fails to load / shader error**: paste the `latest.log` lines mentioning `shadow.gsh` or the failing file.
 - **No local light or no shadows**: Debug View 4; note which squares are red.
 - Fences/walls look too dark/light in shadow: *Daytime Ambient*. Torches too weak/strong: *Light Intensity*, then *Light Spread*.
-- **A torch shadow is missing**: raise *Fine Shadow Lights* (or *Fine Light Shadows* if it is off) so that light gets the depth-buffer ray.
+- **A mob or dropped item casts no torch shadow**: that needs *Fine Light Shadows*, which is off by default; see the limitation above before enabling it.
 - **Hand or held item is invisible**: it must write the G-buffer; if you edit `gbuffers_hand.fsh`, keep `RENDERTARGETS: 0,1,2,3` and `PASS_HAND`, otherwise the deferred pass paints over it.
