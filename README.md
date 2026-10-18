@@ -69,6 +69,7 @@ Quality knobs are `const`s at the top of `shaders/include/settings.glsl`:
 | `LIGHT_FALLOFF` | 0.80 | per-block falloff; 0.8 reaches 17 blocks |
 | `COLORED_LIGHT_STRENGTH` | 0.88 | how strongly block light tints a surface |
 | `HANDHELD_LIGHT_STRENGTH` | 0.55 | brightness of the light in your hand |
+| `DEBUG_VIEW` | 0 | 0 = normal, 1 = shadow factor, 2 = light volume, 3 = normals, 4 = sun direction |
 
 Colours live in `shaders/include/light_colors.glsl`, indexed by the block IDs
 assigned in `shaders/block.properties`. Adding a light emitting block means
@@ -130,6 +131,27 @@ basic: ParseCancellationException: line 91:10 no viable alternative at input 'co
 
 Use the names, never declare them. `tools/iris_defines.py` holds the list;
 `validate.py` and `iris_compat.py` both fail if the pack declares one.
+
+## Troubleshooting
+
+Everything visual is controlled by one switch. Set `DEBUG_VIEW` at the bottom of
+`shaders/include/settings.glsl`, reload shaders, and look at the ground:
+
+| Value | Screen shows | What it tells you |
+|---|---|---|
+| `3` | rainbow that follows the block shapes | the pack *is* shading terrain |
+| `1` | white = lit, black = shadowed | whether the shadow map is being sampled |
+| `2` | coloured blobs around torches | whether the light volume is filling |
+| `4` | a flat colour | the scene-space sun direction |
+
+If `3` shows vanilla-looking terrain, the pack's programs are not running at all
+(check `latest.log` for `[Iris]` errors). If `1` is white everywhere, no shadow
+map is being rendered. If `2` is black around a torch, the compute flood fill is
+not running.
+
+Note that **Voxy and Distant Horizons are not supported**: with either mod
+enabled the LOD terrain is drawn by the mod, not by this pack. Test with them
+disabled.
 
 ## Known limitations
 

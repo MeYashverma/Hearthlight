@@ -132,12 +132,14 @@ vec3 scene_dir(vec3 view_dir) {
     );
 }
 
-// Sun and moon in scene space. `sunPosition` is already a direction (unnormalised
-// for orthographic projection purposes), so normalise a copy for lighting.
-vec3 get_sun_dir() { return safe_normalize(sunPosition, vec3(0.0, 1.0, 0.0)); }
-vec3 get_moon_dir() {
-    return safe_normalize(moonPosition, vec3(0.0, -1.0, 0.0));
-}
+// Iris builds sunPosition/moonPosition by pushing (0, 100, 0) through
+// gbufferModelView (see CelestialUniforms.getCelestialPosition), so they are in
+// **view space** and rotate with the camera. Comparing one of those directly
+// against a scene-space normal gives a light direction that turns with the
+// player, which is what makes sunlight and its shadows pop in and out as you
+// look around. They have to go through gbufferModelViewInverse first.
+vec3 get_sun_dir() { return scene_dir(sunPosition); }
+vec3 get_moon_dir() { return scene_dir(moonPosition); }
 
 // The overworld has a sun by day and a moon by night. The nether and the end
 // have neither, they only get ambient light.

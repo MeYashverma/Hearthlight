@@ -31,6 +31,22 @@ void main() {
     }
 
     vec3 normal = safe_normalize(scene_normal, vec3(0.0, 1.0, 0.0));
+
+#if DEBUG_VIEW == 1
+    float NoL = saturate(dot(normal, get_light_dir()));
+    frag_color = vec4(vec3(get_shadow(scene_pos, normal, NoL)), 1.0);
+    return;
+#elif DEBUG_VIEW == 2
+    frag_color = vec4(sample_light_volume(scene_pos, normal) * 4.0, 1.0);
+    return;
+#elif DEBUG_VIEW == 3
+    frag_color = vec4(normal * 0.5 + 0.5, 1.0);
+    return;
+#elif DEBUG_VIEW == 4
+    frag_color = vec4(get_light_dir() * 0.5 + 0.5, 1.0);
+    return;
+#endif
+
     vec3 colour
         = shade_surface(albedo.rgb, normal, scene_pos, light_levels, material_mask);
     colour = apply_fog(colour, length(scene_pos));

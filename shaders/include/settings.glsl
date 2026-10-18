@@ -56,4 +56,17 @@ const float COLORED_LIGHT_STRENGTH = 0.88;
 // Strength of the light colour cast by the held item.
 const float HANDHELD_LIGHT_STRENGTH = 0.55;
 
+// Diagnostic output for terrain. Change the number, reload shaders (F3+T or the
+// shader screen) and look at the ground:
+//
+//   0  normal shading
+//   1  shadow factor     white = lit, black = shadowed
+//   2  coloured light    the raw light volume, boosted so it is visible
+//   3  surface normal    should be a smooth rainbow that follows the shape
+//   4  sun direction     colour = sun direction * 0.5 + 0.5
+//
+// 3 tells you whether this pack is drawing the terrain at all, 1 and 2 tell you
+// which of the two features is missing.
+#define DEBUG_VIEW 0
+
 #endif

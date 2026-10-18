@@ -264,6 +264,7 @@ def test_shading(constants: dict[str, float]) -> None:
 
     grass = np.array([0.30, 0.52, 0.22])
     stone = np.array([0.50, 0.50, 0.50])
+    # A tilted sun, so a yaw rotation actually moves it.
     up = np.array([0.0, 1.0, 0.0])
     sun = np.array([0.35, 0.85, 0.30])
     sun = sun / np.linalg.norm(sun)
@@ -303,6 +304,43 @@ def test_shading(constants: dict[str, float]) -> None:
     cave = shade_surface(stone, up, sun, 0.0, 0.0, 1.0, white, None, noon, ambient_strength)
     print(f"    unlit cave        {np.round(cave, 3)}")
     check("unlit cave is black", float(cave.max()) < 1e-6)
+
+
+def test_sun_direction() -> None:
+    """Guard the bug that made sunlight rotate with the camera.
+
+    Iris builds sunPosition/moonPosition in *view* space. Using them without
+    `gbufferModelViewInverse` gives a light direction that follows the camera,
+    so shadows appear and disappear as you look around.
+    """
+    print("\nSun direction (shaders/include/global.glsl)")
+    source = read(SHADERS / "include" / "global.glsl")
+    for name in ("get_sun_dir", "get_moon_dir"):
+        body = re.search(rf"vec3 {name}\(\)\s*\{{([^}}]*)\}}", source)
+        ok = body is not None and "scene_dir(" in body.group(1)
+        print(f"    {name}: {body.group(1).strip() if body else 'missing'}")
+        check(f"{name} converts out of view space", ok)
+
+    # Demonstrate the failure mode: one scene-space direction, pushed through a
+    # rotating camera, must not change when the camera turns.
+    import numpy as np
+
+    # A tilted sun, so a yaw rotation actually moves it.
+    sun = np.array([0.42, 0.79, 0.31])
+    sun = sun / np.linalg.norm(sun)
+    for yaw_deg in (0.0, 45.0, 90.0, 180.0):
+        c, s_ = np.cos(np.radians(yaw_deg)), np.sin(np.radians(yaw_deg))
+        # gbufferModelView rotation about Y (view from scene).
+        view = np.array([[c, 0.0, -s_], [0.0, 1.0, 0.0], [s_, 0.0, c]]) @ sun
+        # Correct: back out of view space. Buggy: use the view-space vector.
+        scene = np.array([[c, 0.0, s_], [0.0, 1.0, 0.0], [-s_, 0.0, c]]) @ view
+        assert np.allclose(scene, sun, atol=1e-9)
+        if yaw_deg:
+            assert not np.allclose(view, sun, atol=1e-6)
+
+    print("    a camera yaw of 45/90/180 degrees leaves the scene-space sun fixed")
+    print("    (the view-space vector rotates, which is what broke shadows)")
+    check("view-space sun would rotate with the camera", True)
 
 
 def test_shadow_math(constants: dict[str, float]) -> None:
@@ -362,6 +400,7 @@ def main() -> int:
     test_colour_table(colors, c)
     test_floodfill(colors, c)
     test_shading(c)
+    test_sun_direction()
     test_shadow_math(c)
 
     print()
