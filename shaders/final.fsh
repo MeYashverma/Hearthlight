@@ -18,7 +18,9 @@ in vec2 texcoord;
 layout(location = 0) out vec4 outColor;
 
 void main() {
-    vec3 c = texture(colortex0, texcoord).rgb;
+    vec3 c = texture(colortex0, texcoord).rgb * EXPOSURE;
+    // Hue-preserving clamp: only geometry that is genuinely over-bright is
+    // touched, so vanilla colours are byte-identical at EXPOSURE = 1.
     float m = max(max(c.r, c.g), c.b);
     c /= max(1.0, m);
     outColor = vec4(c, 1.0);

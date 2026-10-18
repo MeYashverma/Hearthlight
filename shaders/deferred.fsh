@@ -15,7 +15,6 @@ const vec4 colortex3ClearColor = vec4(0.0, 0.0, 0.0, 0.0);
 #include "/lib/settings.glsl"
 #include "/lib/common.glsl"
 #include "/lib/lightbuf.glsl"
-#include "/lib/ssshadow.glsl"
 
 uniform sampler2D colortex0;
 uniform sampler2D colortex1;
@@ -23,6 +22,7 @@ uniform sampler2D colortex2;
 uniform sampler2D colortex3;
 uniform sampler2D colortex4;
 uniform sampler2D depthtex0;
+uniform sampler2D depthtex2;   // world depth *before* the hand was drawn
 uniform sampler2D shadowtex1;
 
 uniform mat4 gbufferProjectionInverse;
@@ -158,8 +158,7 @@ float estimate(vec3 lp, float level, vec3 O, vec3 N) {
     return (level / 15.0) * lightAtt(d, R) * ndl;
 }
 
-vec3 shadeLight(vec3 lp, float level, vec3 rawColor, vec3 O, vec3 N, vec3 rnd,
-                vec3 viewPos, float useSS) {
+vec3 shadeLight(vec3 lp, float level, vec3 rawColor, vec3 O, vec3 N, vec3 rnd) {
     vec3 toL = lp - O;
     float d = length(toL);
     float R = lightRange(level);
@@ -172,18 +171,6 @@ vec3 shadeLight(vec3 lp, float level, vec3 rawColor, vec3 O, vec3 N, vec3 rnd,
     vec3 target = lp + (rnd * 2.0 - 1.0) * (SHADOW_SOFTNESS * 0.35);
     target = clamp(target, vec3(lb) + 0.05, vec3(lb) + 0.95);
     float vis = traceVis(O, target, lb);
-
-#if LIGHT_SS_SHADOWS
-    // The half-block volume cannot hold a player, a mob, a fence or a pane, so
-    // the strongest lights also trace the depth buffer; where that ray has
-    // enough of the view to answer, it replaces the voxel result.
-    if (useSS > 0.5) {
-        vec3 lightView = hl_worldToView(lp - cameraPositionFract - float(VOXEL_HALF), gbufferModelViewInverse);
-        vec2 ss = hl_ssLocalShadow(viewPos, lightView, gbufferProjectionInverse);
-        vis = (ss.x < 0.5) ? 0.0 : mix(vis, 1.0, ss.y);
-    }
-#endif
-
     vec3 col = mix(WARM_BASE, rawColor, COLOR_STRENGTH);
     return col * (e * vis);
 }
@@ -204,6 +191,13 @@ void main() {
     vec4 base = texture(colortex0, texcoord);
     vec4 alb = texture(colortex2, texcoord);
     float depth = texture(depthtex0, texcoord).r;
+    // Iris copies the world depth into depthtex2 just before the hand is drawn.
+    // Where the current depth is in front of that copy, this pixel is the hand
+    // (or anything else drawn in the hand pass). It owns colortex0, so leave it
+    // alone -- this works even if the hand fell back to a program that does not
+    // write the G-buffer mask.
+    float depthNoHand = texture(depthtex2, texcoord).r;
+    bool isHand = depth < depthNoHand - 1e-7;
 
     outColor = base;
     outHist = vec4(0.0, 0.0, 0.0, -1.0);
@@ -236,12 +230,23 @@ void main() {
     vec3 viewPos = vp.xyz / vp.w;
     vec3 playerPos = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
 
+    if (isHand) {
+#if DEBUG_VIEW == 7
+        outColor = vec4(1.0, 0.15, 0.15, 1.0);      // hand pixels, brightly marked
+#else
+        outColor = vec4(base.rgb * HAND_BRIGHTNESS, 1.0);
+#endif
+        return;
+    }
+#if DEBUG_VIEW == 7
+    outColor = vec4(0.12, 0.12, 0.12, 1.0);         // everything else
+    return;
+#endif
+
     // ---- sky: blend the horizon into the same fog colour the terrain fades to (no hard band) ----
     if (depth >= 1.0) {
-        // Something drew here without leaving depth (the hand can): keep it.
-        if (alb.a > 0.003) return;
         float h = normalize(playerPos).y;
-        float haze = exp(-max(h, 0.0) * 6.5);
+        float haze = exp(-max(h, 0.0) * 6.5 / max(HORIZON_HAZE, 0.05));
         outColor = vec4(mix(base.rgb, fogColor, haze), base.a);
         return;
     }
@@ -293,7 +298,8 @@ void main() {
         lightCol = vec3(0.50, 0.62, 1.00);
         lightI = 0.16 * MOON_STRENGTH * mix(0.45, 1.0, fullness) * smoothstep(0.0, 0.30, -sunH);
     }
-    lightI *= 1.0 - 0.75 * rainStrength;
+    lightCol *= mix(vec3(1.0), vec3(1.10, 0.94, 0.78), SUN_WARMTH * 0.5);
+    lightI *= 1.0 - RAIN_DARKENING * rainStrength;
 
     float ndl = saturate((dot(N, Lw) + 0.12) / 1.12);   // slight wrap: low sun still grazes surfaces
     float skyGate = smoothstep(0.30, 0.85, skyL);
@@ -302,9 +308,11 @@ void main() {
     vec3 direct = lightCol * (lightI * ndl * vis * skyGate);
 
     // Ambient sky light: cool at midday, warming toward dusk/dawn, vanilla night colour after dark.
-    float dusk = (1.0 - smoothstep(0.02, 0.40, sunH)) * smoothstep(-0.12, 0.04, sunH);
-    vec3 ambTint = mix(vec3(0.93, 0.98, 1.06), vec3(1.10, 0.82, 0.62), dusk);
-    vec3 ambient = skyAmb * mix(1.0, AMBIENT_DAY, dayAmt) * mix(vec3(1.0), ambTint, dayAmt * 0.6 + dusk * 0.4)
+    float dusk = (1.0 - smoothstep(0.02, 0.40, sunH)) * smoothstep(-0.12, 0.04, sunH) * DAWN_DUSK_TINT;
+    vec3 ambTint = mix(vec3(0.93, 0.98, 1.06), vec3(1.10, 0.82, 0.62), clamp(dusk, 0.0, 1.0));
+    float ambScale = mix(AMBIENT_NIGHT, AMBIENT_DAY, dayAmt);
+    vec3 ambient = skyAmb * ambScale
+                 * mix(vec3(1.0), ambTint, clamp(dayAmt * 0.6 + dusk * 0.4, 0.0, 1.0))
                  * (1.0 - 0.12 * rainStrength);
 
     // ---- local lights -----------------------------------------------------------------------
@@ -338,8 +346,7 @@ void main() {
         vec3 rnd = vec3(ign(fc + 5.588 * f + 11.0 * float(i)),
                         ign(fc.yx + 17.0 + 3.1 * f + 7.0 * float(i)),
                         ign(fc + 41.0 + 8.7 * f + 5.0 * float(i)));
-        irr += shadeLight(pl.xyz, pl.w, LB.lights[gIdx[i]].color.rgb, O, N, rnd,
-                          viewPos, i < LIGHT_SS_COUNT ? 1.0 : 0.0);
+        irr += shadeLight(pl.xyz, pl.w, LB.lights[gIdx[i]].color.rgb, O, N, rnd);
     }
 
     // Lights carried in the hands.
@@ -349,13 +356,13 @@ void main() {
     if (heldBlockLightValue >= 2) {
         vec3 hc = lightColorFromId(heldItemId);
         if (dot(hc, hc) < 1e-4) hc = WARM_BASE;
-        irr += shadeLight(hp0, float(heldBlockLightValue), hc, O, N, rndH, viewPos, 0.0);
+        irr += shadeLight(hp0, float(heldBlockLightValue), hc, O, N, rndH);
         tintAcc += hc * 0.5; tintW += 0.5;
     }
     if (heldBlockLightValue2 >= 2) {
         vec3 hc = lightColorFromId(heldItemId2);
         if (dot(hc, hc) < 1e-4) hc = WARM_BASE;
-        irr += shadeLight(hp1, float(heldBlockLightValue2), hc, O, N, rndH.zxy, viewPos, 0.0);
+        irr += shadeLight(hp1, float(heldBlockLightValue2), hc, O, N, rndH.zxy);
         tintAcc += hc * 0.5; tintW += 0.5;
     }
 

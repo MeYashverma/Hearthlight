@@ -214,51 +214,6 @@ def trace_vis(volume: dict, o, t, light_block) -> float:
     return trans
 
 
-def ss_local_shadow(view_pos, light_view, sample, cam_f=0.35, steps=16,
-                    thickness=0.22, stop_dist=0.80):
-    """Port of hl_ssLocalShadow(). `sample(uv)` returns view-space scene depth
-    for that pixel, or None for sky."""
-    d = np.asarray(light_view, dtype=float) - np.asarray(view_pos, dtype=float)
-    length = float(np.linalg.norm(d))
-    if length < 1e-3:
-        return 1.0, 1.0
-    d /= length
-
-    stop = max(length - stop_dist, 0.10)
-    t = 0.10
-    step_len = 0.20
-    covered = 0.0
-
-    for _ in range(steps):
-        dt = min(step_len, stop - t)
-        if dt <= 1e-4:
-            covered = 1.0
-            break
-        t += dt
-        step_len *= 1.18
-        covered = t / stop
-
-        p = np.asarray(view_pos, dtype=float) + d * t
-        ray_z = -p[2]
-        if ray_z <= 0.05:
-            break
-
-        uv = (p[0] / ray_z * cam_f + 0.5, p[1] / ray_z * cam_f + 0.5)
-        if not (0.0 <= uv[0] <= 1.0 and 0.0 <= uv[1] <= 1.0):
-            break
-
-        scene = sample(uv)
-        if scene is None:
-            continue
-        if ray_z - scene > thickness:
-            return 0.0, 1.0
-
-    return 1.0, smoothstep(0.45, 0.95, covered)
-
-
-# ---------------------------------------------------------------------------
-# tests
-# ---------------------------------------------------------------------------
 def test_layout() -> None:
     c = consts()
     s = settings()
@@ -470,166 +425,26 @@ def test_sun_direction() -> None:
     check("moonlight is dimmer than sunlight", day_night(-1.0)[1] < day_night(1.0)[0])
 
 
-def test_ss_local_shadow() -> None:
+def test_hand_detection() -> None:
+    """The hand must be identified from depthtex2 (the pre-hand depth Iris
+    copies), not from the G-buffer mask: the hand can be drawn by a program that
+    never writes that mask, and then the terrain's mask would erase it."""
     s = settings()
-    print("\nfine light shadows (screen space)")
-
-    surface = np.array([0.0, -1.0, -2.0])
-    light = np.array([0.0, 0.5, -4.0])       # four blocks ahead, slightly above
-
-    empty = lambda uv: None
-    vis, conf = ss_local_shadow(surface, light, empty, steps=int(s["LIGHT_SS_STEPS"]))
-    check("an empty screen leaves the light unblocked", vis > 0.99, f"vis={vis:.2f}")
-    check("a clear ray is trusted", conf > 0.9, f"confidence={conf:.2f}")
-
-    def wall(uv):
-        return 3.0 if uv[0] > 0.45 else None           # 3 blocks ahead, in the ray
-
-    vis, _ = ss_local_shadow(surface, light, wall, steps=int(s["LIGHT_SS_STEPS"]))
-    check("a wall between the surface and the light blocks it", vis < 0.01, f"vis={vis:.2f}")
-
-    # The emitter's own block must not block: a glowstone cube around the light.
-    def emitter(uv):
-        return 3.6 if uv[0] <= 0.6 else None           # the glowstone block around the light
-
-    vis, _ = ss_local_shadow(surface, light, emitter, steps=int(s["LIGHT_SS_STEPS"]))
-    check("the emitter's own block does not shadow the surface", vis > 0.99, f"vis={vis:.2f}")
-
-    # A light behind the camera cannot be traced.
-    behind = np.array([0.0, -1.0, 3.0])
-    vis, conf = ss_local_shadow(surface, behind, empty, steps=int(s["LIGHT_SS_STEPS"]))
-    check("a light behind the camera is distrusted", conf < 0.6, f"confidence={conf:.2f}")
-    check("a distrusted ray never invents a shadow", vis > 0.99)
-
-    check("the fine light shadow is exposed as an option",
-          "LIGHT_SS_SHADOWS" in s and "LIGHT_SS_COUNT" in s and "LIGHT_SS_STEPS" in s)
-
-
-# --- synthetic scene used to cross-check the fine light ray -----------------
-class Scene:
-    """Floor plane plus axis-aligned boxes, ray-cast analytically."""
-
-    def __init__(self, floor_y=-1.62, boxes=(), walls_z=()):
-        self.floor_y = floor_y
-        self.boxes = list(boxes)
-        self.walls_z = list(walls_z)
-
-    def raycast(self, origin, direction, max_t=60.0):
-        """Return the nearest hit distance, or None."""
-        best = None
-        d = np.asarray(direction, dtype=float)
-        o = np.asarray(origin, dtype=float)
-
-        if abs(d[1]) > 1e-9:
-            t = (self.floor_y - o[1]) / d[1]
-            if 1e-4 < t < max_t:
-                best = t
-
-        for wz in self.walls_z:
-            if abs(d[2]) > 1e-9:
-                t = (wz - o[2]) / d[2]
-                if 1e-4 < t < max_t:
-                    y = o[1] + d[1] * t
-                    if y > self.floor_y and (best is None or t < best):
-                        best = t
-
-        for (cx, cy, cz, hx, hy, hz) in self.boxes:
-            lo = np.array([cx - hx, cy - hy, cz - hz])
-            hi = np.array([cx + hx, cy + hy, cz + hz])
-            t0, t1 = -1e9, 1e9
-            miss = False
-            for k in range(3):
-                if abs(d[k]) < 1e-9:
-                    if not (lo[k] <= o[k] <= hi[k]):
-                        miss = True
-                        break
-                    continue
-                a = (lo[k] - o[k]) / d[k]
-                b = (hi[k] - o[k]) / d[k]
-                if a > b:
-                    a, b = b, a
-                t0 = max(t0, a)
-                t1 = min(t1, b)
-            if miss or t0 > t1:
-                continue
-            t = t0 if t0 > 1e-4 else t1
-            if 1e-4 < t < max_t and (best is None or t < best):
-                best = t
-        return best
-
-    def depth_sampler(self, cam_f, max_px=60.0):
-        """A stand-in for depthtex1: view depth at a screen coordinate."""
-        def sample(uv):
-            x = (uv[0] - 0.5) / cam_f
-            y = (uv[1] - 0.5) / cam_f
-            d = np.array([x, y, -1.0])
-            hit = self.raycast((0.0, 0.0, 0.0), d)
-            if hit is None:
-                return None
-            return -d[2] * hit          # positive view depth
-        return sample
-
-
-def test_fine_ray_against_ground_truth() -> None:
-    """The fine light ray must agree with an analytic ray cast of the same scene,
-    wherever the ray stays on screen. This is what catches a wrong matrix or a
-    bias that is too small, which show up as huge false shadow regions."""
-    print("\nfine light ray vs ray-cast ground truth")
-    s = settings()
-    steps = int(s["LIGHT_SS_STEPS"])
-    cam_f = 0.35
-    rng = np.random.default_rng(11)
-
-    worst_false = 0
-    worst_detail = None
-    agree = 0
-    comparable = 0
-
-    for _ in range(60):
-        boxes = []
-        for _ in range(int(rng.integers(0, 3))):
-            boxes.append((float(rng.uniform(-2.5, 2.5)), -1.62 + float(rng.uniform(0.4, 1.0)),
-                          float(rng.uniform(-12, -5)), 0.5, float(rng.uniform(0.3, 0.9)), 0.5))
-        walls = (float(rng.uniform(-16, -8)),) if rng.random() < 0.4 else ()
-        scene = Scene(boxes=boxes, walls_z=walls)
-        sampler = scene.depth_sampler(cam_f)
-        light = np.array([rng.uniform(-4, 4), -1.62 + rng.uniform(0.4, 2.5), rng.uniform(-20, -3)])
-
-        false = 0
-        total = 0
-        for gx in np.linspace(-0.8, 0.8, 5):
-            for gz in np.linspace(2.0, 16.0, 6):
-                p = np.array([gx, -1.62, -gz])
-
-                d = light - p
-                L = float(np.linalg.norm(d))
-                d = d / L
-                hit = scene.raycast(p, d, max_t=L)
-                truth_blocked = hit is not None and hit < L - 0.8
-
-                vis, conf = ss_local_shadow(p, light, sampler, steps=steps)
-                total += 1
-                if conf > 0.9:                       # the ray was fully traceable
-                    comparable += 1
-                    if truth_blocked == (vis > 0.5):
-                        false += 1
-                    else:
-                        agree += 1
-        if false > worst_false:
-            worst_false = false
-            worst_detail = (light, len(boxes), len(walls))
-    # The remaining disagreements are dominated by false positives: the depth
-    # buffer stores only the nearest surface, so geometry standing between the
-    # camera and the lit floor is read as an occluder even when the light's ray
-    # passes over it. That is a property of screen-space shadowing, not a bug we
-    # can fix here -- which is why the feature ships off by default.
-    check("the fine ray is most of the way to the ray cast",
-          comparable > 0 and agree >= comparable * 0.75,
-          f"{agree}/{comparable} agree")
-    check("the remaining disagreements are foreground false positives",
-          worst_false > 0, f"worst {worst_false} in one scene")
-    check("shipped default for the experimental ray is off",
-          settings()["LIGHT_SS_SHADOWS"] == 0.0)
+    src = read(SHADERS / "deferred.fsh")
+    print("\nhand")
+    check("deferred samples depthtex2", "uniform sampler2D depthtex2;" in src)
+    check("hand is detected as depth in front of the pre-hand depth",
+          "bool isHand = depth < depthNoHand - 1e-7;" in src)
+    check("hand pixels are returned before any lighting",
+          src.index("if (isHand)") < src.index("vec3 sunDirW"))
+    check("hand brightness is applied where the hand is kept",
+          "base.rgb * HAND_BRIGHTNESS" in src)
+    check("HAND_BRIGHTNESS is an option", "HAND_BRIGHTNESS" in s)
+    check("debug view 7 exists for the hand", "DEBUG_VIEW == 7" in src and s["DEBUG_VIEW"] >= 0)
+    check("the hand program writes the G-buffer",
+          "RENDERTARGETS: 0,1,2,3" in read(SHADERS / "gbuffers_hand.fsh"))
+    check("the fine local-light ray is gone",
+          "hl_ssLocalShadow" not in src and "LIGHT_SS_SHADOWS" not in s)
 
 
 def test_falloff() -> None:
@@ -656,8 +471,7 @@ def main() -> int:
     test_octants()
     test_distortion()
     test_sun_direction()
-    test_ss_local_shadow()
-    test_fine_ray_against_ground_truth()
+    test_hand_detection()
     test_falloff()
 
     print()

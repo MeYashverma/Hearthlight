@@ -64,12 +64,19 @@ void main() {
 
     const float lmMin = 1.0 / 32.0;
     vec3 lm = texture(lightmap, lmcoord).rgb;
+#ifdef PASS_HAND
+    // In a pitch-dark room the vanilla lightmap drives the hand to black, which
+    // reads as "my hand has disappeared". A small floor keeps it visible without
+    // pretending there is light: the silhouette stays, the colour does not.
+    lm = max(lm, vec3(0.10));
+#endif
     vec3 lit = albedo.rgb * lm;
     float fogF = hlFogFactor(playerPos, far, fogStart, fogEnd);
     outColor = vec4(mix(lit, fogColor, fogF), albedo.a);
 
 #ifdef PASS_HAND
-    // Mask stays 0 (written above): deferred returns colortex0 unchanged.
+    // Mask stays 0 (written above) and deferred recognises hand pixels through
+    // depthtex2, so this colour survives untouched apart from HAND_BRIGHTNESS.
     return;
 #endif
 

@@ -21,14 +21,20 @@
 #define SHADOW_SOFTNESS 0.50 // [0.00 0.25 0.50 0.75 1.00]
 #define SHADOW_RAY_STEPS 64 // [32 48 64 96]
 #define MAX_LIGHTS_PER_PIXEL 4 // [2 4 6 8]
-// Experimental. The depth buffer only stores the nearest surface, so anything
-// standing between the camera and the lit floor (a fence, the lamp itself)
-// projects a phantom shadow across it. Off by default for that reason.
-#define LIGHT_SS_SHADOWS 0 // [0 1]
-#define LIGHT_SS_COUNT 2 // [1 2 3 4]
-#define LIGHT_SS_STEPS 16 // [8 16 24 32]
 
-#define DEBUG_VIEW 0 // [0 1 2 3 4 5 6]
+// ---- sky & atmosphere ----
+#define AMBIENT_NIGHT 1.00 // [0.60 0.80 1.00 1.20 1.40]
+#define DAWN_DUSK_TINT 1.00 // [0.00 0.50 1.00 1.50 2.00]
+#define SUN_WARMTH 0.00 // [0.00 0.50 1.00 1.50 2.00]
+#define RAIN_DARKENING 0.75 // [0.00 0.25 0.50 0.75 1.00]
+#define HORIZON_HAZE 1.00 // [0.50 0.75 1.00 1.25 1.50 2.00]
+
+// ---- view ----
+#define HAND_BRIGHTNESS 1.00 // [0.75 1.00 1.25 1.50 2.00]
+#define FOG_DISTANCE 1.00 // [0.75 1.00 1.25 1.50]
+#define EXPOSURE 1.00 // [0.85 0.95 1.00 1.05 1.15 1.25]
+
+#define DEBUG_VIEW 0 // [0 1 2 3 4 5 6 7]
 
 // ---- shadow map (read by Iris) ----
 const int shadowMapResolution = 2048; // [1024 2048 3072 4096]
