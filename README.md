@@ -46,9 +46,13 @@ those mods are enabled. Turn them off, or wait for a later version.
 
 ## Installation
 
-1. Copy the `shaders/` folder (or the built `Hearthlight.zip`) into
-   `.minecraft/shaderpacks/`.
-2. Select **Hearthlight** in `Options → Video Settings → Shader Packs`.
+Download [`Hearthlight.zip`](Hearthlight.zip) (the green **Download** button on
+that page, or `curl -L -O https://github.com/MeYashverma/Hearthlight/raw/main/Hearthlight.zip`
+once this is merged), drop it into `.minecraft/shaderpacks/`, then select
+**Hearthlight** in `Options → Video Settings → Shader Packs`.
+
+The zip is rebuilt from the sources with `tools/package.sh`; it contains the
+`shaders/` folder at its root, plus this readme and the licence.
 
 ## Settings
 
