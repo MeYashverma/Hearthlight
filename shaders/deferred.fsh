@@ -239,6 +239,8 @@ void main() {
 
     // ---- sky: blend the horizon into the same fog colour the terrain fades to (no hard band) ----
     if (depth >= 1.0) {
+        // Something drew here without leaving depth (the hand can): keep it.
+        if (alb.a > 0.003) return;
         float h = normalize(playerPos).y;
         float haze = exp(-max(h, 0.0) * 6.5);
         outColor = vec4(mix(base.rgb, fogColor, haze), base.a);
