@@ -20,27 +20,11 @@ const bool DIM_NETHER = false;
 const bool DIM_END = false;
 #endif
 
-// WorldRenderingPhase ordinals, mirrored from Iris so shadow voxelization can
-// ignore anything that is not terrain.
-const int MC_RENDER_STAGE_NONE = 0;
-const int MC_RENDER_STAGE_SKY = 1;
-const int MC_RENDER_STAGE_CUSTOM_SKY = 3;
-const int MC_RENDER_STAGE_SUN = 4;
-const int MC_RENDER_STAGE_MOON = 5;
-const int MC_RENDER_STAGE_STARS = 6;
-const int MC_RENDER_STAGE_TERRAIN_SOLID = 8;
-const int MC_RENDER_STAGE_TERRAIN_CUTOUT_MIPPED = 9;
-const int MC_RENDER_STAGE_TERRAIN_CUTOUT = 10;
-const int MC_RENDER_STAGE_ENTITIES = 11;
-const int MC_RENDER_STAGE_BLOCK_ENTITIES = 12;
-const int MC_RENDER_STAGE_DESTROY = 13;
-const int MC_RENDER_STAGE_OUTLINE = 14;
-const int MC_RENDER_STAGE_HAND_SOLID = 16;
-const int MC_RENDER_STAGE_TERRAIN_TRANSLUCENT = 17;
-const int MC_RENDER_STAGE_PARTICLES = 19;
-const int MC_RENDER_STAGE_CLOUDS = 20;
-const int MC_RENDER_STAGE_RAIN_SNOW = 21;
-const int MC_RENDER_STAGE_HAND_TRANSLUCENT = 23;
+// Render stage IDs come from Iris itself: it injects a `MC_RENDER_STAGE_<PHASE>`
+// macro for every WorldRenderingPhase into every program, with the ordinal as
+// the value. Do not declare them here - a `const int` with one of those names
+// expands to `const int 0`, which Iris' parser rejects.
+// (`renderStage` is the ordinal, see WorldRenderingPhase in Iris.)
 
 // -----------------------------------------------------------------------------
 // Uniforms supplied by Iris

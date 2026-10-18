@@ -100,24 +100,36 @@ colour can never make a cave brighter than vanilla says it should be.
 
 ```sh
 python3 tools/validate.py --glslang /path/to/glslangValidator
-python3 tools/simulate.py            # needs numpy
+python3 tools/iris_compat.py          # needs pcpp: pip install pcpp
+python3 tools/simulate.py             # needs numpy
 ```
 
-`validate.py` expands the pack's `#include`s and compiles every program wrapper
-in `shaders/world*`, then links each vertex/fragment pair the way Iris does at
-load time. 39 stages and 18 links pass.
+- **`validate.py`** expands the includes, injects the macros Iris injects,
+  compiles every program with glslang and links each vertex/fragment pair the way
+  Iris does at load time. 39 stages and 18 links pass.
+- **`iris_compat.py`** runs the pack through a real C preprocessor (`pcpp`, the
+  job JCPP does inside Iris) with Iris' standard defines applied, then compiles
+  the result — plus a direct check for identifiers that collide with Iris' own
+  `#define`s.
+- **`simulate.py`** ports the pure maths (the flood fill, `shade_surface()`, the
+  shadow bias and distortion) to Python and runs it on synthetic scenes.
 
-`simulate.py` ports the pure-maths parts of the shaders — the flood fill in
-`shadowcomp.csh` and `shade_surface()` in `shading.glsl` — to Python, reading
-its constants straight out of the GLSL, and runs them on synthetic scenes: a
-torch in open air, a sealed room, day/night, torch versus soul torch, and the
-shadow distortion and depth maths.
+### Reserved names
 
-That is not a substitute for running the game, but it catches the mistakes that
-matter: the first version of the flood fill averaged its neighbours, which
-looked plausible and gave coloured light a range of three blocks instead of
-sixteen. Switching to a max with a per-block falloff fixed both the range and
-the fill time (8 blocks in 8 frames instead of 179).
+Iris `#define`s a set of names in *every* program, including
+`MC_RENDER_STAGE_<PHASE>` (one per render phase, value = its ordinal), `IS_IRIS`,
+`MC_VERSION`, `MC_GL_VERSION`, `DH_BLOCK_*`, `MC_<GLEXTENSION>` and others.
+
+Declaring any of them in a pack is fatal in a non-obvious way: Hearthlight's
+first upload declared `const int MC_RENDER_STAGE_NONE = 0;`, which Iris rewrote
+to `const int 0 = 0;` and refused to load:
+
+```
+basic: ParseCancellationException: line 91:10 no viable alternative at input 'const int 0'
+```
+
+Use the names, never declare them. `tools/iris_defines.py` holds the list;
+`validate.py` and `iris_compat.py` both fail if the pack declares one.
 
 ## Known limitations
 
