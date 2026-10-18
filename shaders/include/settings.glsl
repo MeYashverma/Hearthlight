@@ -64,6 +64,7 @@ const float HANDHELD_LIGHT_STRENGTH = 0.55;
 //   2  coloured light    the raw light volume, boosted so it is visible
 //   3  surface normal    should be a smooth rainbow that follows the shape
 //   4  sun direction     colour = sun direction * 0.5 + 0.5
+//   5  voxel volume      red = solid, green = emitter, blue = transparent
 //
 // 3 tells you whether this pack is drawing the terrain at all, 1 and 2 tell you
 // which of the two features is missing.

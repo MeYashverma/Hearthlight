@@ -45,6 +45,27 @@ void main() {
 #elif DEBUG_VIEW == 4
     frag_color = vec4(get_light_dir() * 0.5 + 0.5, 1.0);
     return;
+#elif DEBUG_VIEW == 5
+    // What the shadow pass actually stored for this block, so "the volume is
+    // empty" and "the volume is full of air" are distinguishable.
+    if (voxel_is_solid(scene_pos)) {
+        frag_color = vec4(1.0, 0.0, 0.0, 1.0);
+    } else {
+        uint id = texelFetch(
+            voxel_sampler,
+            ivec3(scene_to_voxel(scene_pos)),
+            0
+        )
+                     .x;
+        if (id >= 32u && id < 80u) {
+            frag_color = vec4(0.0, 1.0, 0.0, 1.0);
+        } else if (id >= 80u && id < 96u) {
+            frag_color = vec4(0.0, 0.4, 1.0, 1.0);
+        } else {
+            frag_color = vec4(0.0, 0.0, 0.0, 1.0);
+        }
+    }
+    return;
 #endif
 
     vec3 colour

@@ -66,6 +66,14 @@ vec3 gather_light(sampler3D light_sampler, ivec3 pos) {
     return best;
 }
 
+// Which stored voxel values light can travel through. Everything that is not
+// plainly air or an explicitly transparent block is treated as solid. Being
+// strict here matters: a stray value (an unmapped block id under Sodium can
+// land in the buffer as 255) must block light, not let it through.
+bool is_open(uint block_id) {
+    return block_id == 0u || (block_id >= 80u && block_id < 96u);
+}
+
 void update_light(
     writeonly image3D light_img,
     sampler3D light_sampler,
@@ -74,7 +82,7 @@ void update_light(
     bool first_frames
 ) {
     bool emitter = block_id >= 32u && block_id < 80u;
-    bool opaque = (block_id >= 1u && block_id < 32u) || emitter;
+    bool opaque = !is_open(block_id);
 
     vec3 light = emitter ? emitter_color(int(block_id)) : vec3(0.0);
 

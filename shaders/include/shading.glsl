@@ -11,6 +11,11 @@ uniform sampler2D shadowtex1;
 uniform sampler3D light_sampler_a;
 uniform sampler3D light_sampler_b;
 
+// The un-lit voxel volume written by the shadow pass: 0 = air, 32..79 = emitter,
+// 80..95 = light-transparent block, anything else = solid. Used for occlusion
+// tests and the DEBUG_VIEW readout.
+uniform usampler3D voxel_sampler;
+
 uniform int heldItemId;
 uniform int heldItemId2;
 uniform int heldBlockLightValue;
@@ -122,12 +127,53 @@ vec3 sample_light_volume(vec3 scene_pos, vec3 normal) {
         : texture(light_sampler_b, uvw).rgb;
 }
 
+// Nearest emitter within one block, read straight out of the raw voxel buffer.
+//
+// The flood fill needs a few frames to reach a surface, and would be silent if
+// the compute never ran at all. This 3x3x3 search is exact for the block you
+// are standing next to, so a torch always tints its immediate surroundings even
+// before the propagation catches up. It is cheap (27 texelFetch on an r8ui 3D
+// texture) and only runs where the propagated volume has nothing to say.
+vec3 nearby_emitter_colour(vec3 scene_pos) {
+    vec3 voxel_pos = scene_to_voxel(scene_pos);
+
+    ivec3 base = ivec3(floor(voxel_pos));
+    vec3 best = vec3(0.0);
+
+    for (int x = -1; x <= 1; ++x) {
+        for (int y = -1; y <= 1; ++y) {
+            for (int z = -1; z <= 1; ++z) {
+                ivec3 p = base + ivec3(x, y, z);
+                if (!inside_voxel_volume(vec3(p))) {
+                    continue;
+                }
+
+                uint id = texelFetch(voxel_sampler, p, 0).x;
+                if (id >= 32u && id < 80u) {
+                    float weight = 1.0 - length(vec3(x, y, z)) * 0.35;
+                    best = max(best, emitter_color(int(id)) * weight);
+                }
+            }
+        }
+    }
+
+    return best;
+}
+
 vec3 get_blocklight_tint(vec3 scene_pos, vec3 normal) {
     vec3 colour = sample_light_volume(scene_pos, normal);
 
     float brightness = luma(colour);
     if (brightness < 0.02) {
-        return vec3(1.0);
+        // Nothing propagated yet: fall back to the block's own neighbours.
+        vec3 local = nearby_emitter_colour(scene_pos);
+        float local_brightness = luma(local);
+        if (local_brightness < 0.02) {
+            return vec3(1.0);
+        }
+
+        vec3 local_tint = clamp(local / local_brightness, 0.0, 2.5);
+        return mix(vec3(1.0), local_tint, COLORED_LIGHT_STRENGTH * 0.8);
     }
 
     // Normalise to a pure hue. The lightmap already carries the intensity, this
@@ -154,13 +200,40 @@ vec3 get_held_light_color() {
     return main_color * main * main + off_color * off * off;
 }
 
+// True if the voxel at this scene position holds solid geometry.
+bool voxel_is_solid(vec3 scene_pos) {
+    vec3 voxel_pos = scene_to_voxel(scene_pos);
+    if (!inside_voxel_volume(voxel_pos)) {
+        return false;
+    }
+
+    uint id = texelFetch(voxel_sampler, ivec3(voxel_pos), 0).x;
+    return !(id == 0u || (id >= 80u && id < 96u));
+}
+
+// Walk from the surface towards the camera through the light volume. If solid
+// geometry is in the way, the held light cannot reach the surface. Eight taps
+// is coarse but it stops light bleeding through walls, which is what matters:
+// without it a torch in the hand lights the outside of a building.
+float held_light_visibility(vec3 scene_pos) {
+    float blocked = 0.0;
+    for (int i = 1; i <= 8; ++i) {
+        vec3 sample_pos = scene_pos * (1.0 - float(i) / 9.0);
+        if (voxel_is_solid(sample_pos)) {
+            blocked = 1.0;
+        }
+    }
+    return 1.0 - 0.9 * blocked;
+}
+
 vec3 get_held_light(vec3 scene_pos) {
     if (heldBlockLightValue == 0 && heldBlockLightValue2 == 0) {
         return vec3(0.0);
     }
 
-    float falloff = 1.0 - smoothstep(1.0, 16.0, length(scene_pos));
-    return get_held_light_color() * falloff * HANDHELD_LIGHT_STRENGTH;
+    float falloff = 1.0 - smoothstep(1.0, 12.0, length(scene_pos));
+    return get_held_light_color() * falloff * HANDHELD_LIGHT_STRENGTH
+        * held_light_visibility(scene_pos);
 }
 
 // -----------------------------------------------------------------------------

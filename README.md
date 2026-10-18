@@ -69,7 +69,7 @@ Quality knobs are `const`s at the top of `shaders/include/settings.glsl`:
 | `LIGHT_FALLOFF` | 0.80 | per-block falloff; 0.8 reaches 17 blocks |
 | `COLORED_LIGHT_STRENGTH` | 0.88 | how strongly block light tints a surface |
 | `HANDHELD_LIGHT_STRENGTH` | 0.55 | brightness of the light in your hand |
-| `DEBUG_VIEW` | 0 | 0 = normal, 1 = shadow factor, 2 = light volume, 3 = normals, 4 = sun direction |
+| `DEBUG_VIEW` | 0 | 0 = normal, 1 = shadow, 2 = light volume, 3 = normals, 4 = sun, 5 = raw voxels |
 
 Colours live in `shaders/include/light_colors.glsl`, indexed by the block IDs
 assigned in `shaders/block.properties`. Adding a light emitting block means
@@ -143,6 +143,12 @@ Everything visual is controlled by one switch. Set `DEBUG_VIEW` at the bottom of
 | `1` | white = lit, black = shadowed | whether the shadow map is being sampled |
 | `2` | coloured blobs around torches | whether the light volume is filling |
 | `4` | a flat colour | the scene-space sun direction |
+| `5` | red / green / blue blocks | what the shadow pass stored: red = solid, green = emitter, blue = transparent, black = air |
+
+`5` is the important one for coloured light. If the ground is **black**
+everywhere, the shadow pass is not writing the voxel volume at all (the fill has
+nothing to work with). If it is red, the volume is fine and the problem is
+downstream in the propagation.
 
 If `3` shows vanilla-looking terrain, the pack's programs are not running at all
 (check `latest.log` for `[Iris]` errors). If `1` is white everywhere, no shadow

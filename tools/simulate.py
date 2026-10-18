@@ -74,9 +74,17 @@ def parse_shading_constants() -> dict[str, float]:
 # -----------------------------------------------------------------------------
 
 
+def is_open(block_id: int) -> bool:
+    """Port of is_open() in shadowcomp.csh: only these let light through."""
+    return block_id == 0 or 80 <= block_id < 96
+
+
 def floodfill_step(ids: np.ndarray, light: np.ndarray, colors: np.ndarray, falloff: float) -> np.ndarray:
     emitter = (ids >= 32) & (ids < 80)
-    opaque_plain = (ids >= 1) & (ids < 32)
+    # Everything that is not plainly air or explicitly transparent is solid.
+    # A stray value such as an unmapped block id (255) has to block light,
+    # which is exactly the bug that let light walk through walls.
+    opaque_plain = ~np.vectorize(is_open)(ids) & ~emitter
 
     emitted = np.zeros_like(light)
     emitted[emitter] = colors[ids[emitter] - 32]
@@ -252,6 +260,15 @@ def test_floodfill(colors: np.ndarray, constants: dict[str, float]) -> None:
     sealed, _ = run_floodfill(ids, colors, falloff, steps=40)
     inside = luma(sealed[(lo + hi) // 2, (lo + hi) // 2, (lo + hi) // 2 + 3])
     outside = float(np.abs(sealed[hi + 6, :, :]).max())
+    # Same room, but the walls hold a stray value (unmapped block id under
+    # Sodium lands in the buffer as 255). It must still block.
+    ids_stray = ids.copy()
+    ids_stray[lo:hi, lo:hi, lo:hi][ids_stray[lo:hi, lo:hi, lo:hi] == 1] = 255
+    stray, _ = run_floodfill(ids_stray, colors, falloff, steps=40)
+    stray_outside = float(np.abs(stray[hi + 6, :, :]).max())
+    print(f"    walls storing 255 instead of 1: outside {stray_outside:.3f}")
+    check("unknown voxel values still block light", stray_outside < 1e-6)
+
     print(f"    inside the room: {inside:.3f}, outside the walls: {outside:.3f}")
     check("light lights up inside a sealed room", inside > 0.2, f"{inside:.3f}")
     check("no light leak through sealed walls", outside < 1e-6, f"{outside:.2e}")
