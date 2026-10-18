@@ -1,5 +1,5 @@
-// Light list + per-cell light bins (SSBO 0). Layout MUST be identical in every
-// shader that includes it. Size: 606224 bytes (allocated 1,000,000).
+// Light list + per-cell light bins (SSBO 0). Layout MUST be identical in every shader that includes it.
+// Size: 606224 bytes (allocated 1,000,000).
 #ifndef HL_LIGHTBUF_GLSL
 #define HL_LIGHTBUF_GLSL
 
@@ -10,7 +10,7 @@ struct HLight {
 
 layout(std430, binding = 0) buffer LightData {
     uint lightCount;
-    uint shadowOcc;   // occupied voxels written by the shadow-pass voxelizer this frame
+    uint voxelCount;  // blocks with occupancy written by the shadow pass this frame (diagnostic)
     uint _pad1;
     uint _pad2;
     HLight lights[MAX_LIGHTS];

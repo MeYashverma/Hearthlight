@@ -1,16 +1,16 @@
 #version 430 compatibility
-// Final: hue-preserving highlight handling. Anything that vanilla could display
-// (all channels <= 1) is left untouched; over-bright light is normalised so a
-// coloured torch does not clip into a yellow-white blob.
+// Final: hue-preserving highlight handling. Anything vanilla could show (all channels <= 1)
+// is untouched; over-bright light is normalised so a coloured torch cannot clip into a yellow-white blob.
+
+#include "/lib/settings.glsl"
 
 /*
 const int colortex0Format = RGBA16F;
+const int colortex3Format = RGBA16F;
 const int colortex4Format = RGBA16F;
 const bool colortex4Clear = false;
 const vec4 colortex2ClearColor = vec4(0.0, 0.0, 0.0, 0.0);
-const int shadowMapResolution = 128;
-const float shadowDistance = 64.0;
-const float shadowDistanceRenderMul = 1.0;
+const vec4 colortex3ClearColor = vec4(0.0, 0.0, 0.0, 0.0);
 */
 
 uniform sampler2D colortex0;

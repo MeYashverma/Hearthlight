@@ -1,23 +1,17 @@
 // Shared G-buffer fragment stage.
-//  colortex0 = vanilla-lit colour (block light partly removed near the camera, fogged)
-//  colortex1 = world normal (rgb) + sky light (a)            [deferred passes only]
-//  colortex2 = albedo (rgb) + local-light mask (a)           [deferred passes only]
-// Define PASS_ENTITY for entity tint, PASS_FORWARD for passes that skip deferred lighting.
+//  colortex0 = vanilla-lit colour (fallback; the deferred pass recomputes lighting for masked surfaces)
+//  colortex1 = world normal (rgb) + sky light (a)
+//  colortex2 = albedo (rgb) + mask (a): 1 = lit surface, 0.5 = emissive surface, 0 = not handled
+//  colortex3 = vanilla sky/ambient light colour (rgb) + vanilla block light brightness (a)
+// PASS_FORWARD programs (water, glass, hand) only write colortex0 and stay vanilla-lit.
 #include "/lib/settings.glsl"
 #include "/lib/common.glsl"
-#ifdef PASS_VOXEL
-#include "/lib/lightbuf.glsl"
-#include "/lib/voxelwrite.glsl"
-#elif defined(PASS_VOXEL_EMIT)
-#include "/lib/voxelwrite.glsl"
-#else
+
 uniform sampler2D gtexture;
-#endif
 uniform sampler2D lightmap;
+uniform float far;
 uniform float fogStart;
 uniform float fogEnd;
-uniform int fogMode;
-uniform int fogShape;
 uniform vec3 fogColor;
 #ifdef PASS_ENTITY
 uniform vec4 entityColor;
@@ -27,84 +21,64 @@ in vec2 texcoord;
 in vec2 lmcoord;
 in vec4 glcolor;
 in vec3 normalWS;
+in vec3 normalVS;
 in vec3 playerPos;
 flat in float emissive;
-#if defined(PASS_VOXEL) || defined(PASS_VOXEL_EMIT)
-flat in ivec3 vCell;
-flat in int vId;
-flat in float vLevel;
-in float vCorner;
-#endif
+flat in float isGui;
 
 layout(location = 0) out vec4 outColor;
-#ifndef PASS_FORWARD
+// The hand writes the G-buffer too: it is drawn *before* the deferred pass, so
+// leaving these untouched let the deferred pass re-light the terrain behind the
+// hand and paint over it. A zero mask tells deferred to keep colortex0 as-is.
+#if !defined(PASS_FORWARD) || defined(PASS_HAND)
 layout(location = 1) out vec4 outNormal;
 layout(location = 2) out vec4 outAlbedo;
-layout(location = 3) out vec4 outMaterial;   // r = specular class / 255
+layout(location = 3) out vec4 outLight;
+#define HL_GBUFFER_OUT
 #endif
 
 void main() {
-    vec4 tex = texture(gtexture, texcoord);
-    vec4 albedo = tex * glcolor;
+    vec4 albedo = texture(gtexture, texcoord) * glcolor;
 #ifdef PASS_ENTITY
     albedo.rgb = mix(albedo.rgb, entityColor.rgb, entityColor.a);
 #endif
+#ifdef PASS_FORWARD
+    if (albedo.a < 0.004) discard;
+#else
     if (albedo.a < 0.1) discard;
+#endif
 
-#ifdef PASS_VOXEL
-    // Fallback voxelizer: only active when the shadow-pass voxelizer wrote (almost) nothing this frame.
-    if (LB.shadowOcc < 64u
-        && all(greaterThanEqual(vCell, ivec3(0))) && all(lessThan(vCell, ivec3(VOXEL_RES)))) {
-        hlWriteVoxel(vCell, vId, vLevel, vCorner, texcoord);
+#ifdef HL_GBUFFER_OUT
+    outNormal = vec4(0.0);
+    outAlbedo = vec4(0.0);
+    outLight = vec4(0.0);
+#endif
+
+    // ---- GUI / inventory: simple vanilla-style item lighting, no world lighting or fog ----
+    if (isGui > 0.5) {
+        vec3 nv = normalize(normalVS);
+        float s = max(dot(nv, normalize(vec3(0.2, 1.0, -0.7))), 0.0) + max(dot(nv, normalize(vec3(-0.2, 1.0, 0.7))), 0.0);
+        outColor = vec4(albedo.rgb * (0.58 + 0.42 * min(s, 1.0)), albedo.a);
+        return;
     }
-#endif
-#ifdef PASS_VOXEL_EMIT
-    // Translucent pass: emitters only, never occupancy. Lava, nether portals and
-    // other see-through light sources live here and the shadow pass skips them.
-    hlWriteEmission(vCell, vId, vLevel, texcoord);
-#endif
 
-    // Vanilla lightmap, with the block-light part reduced where Hearthlight supplies its own.
     const float lmMin = 1.0 / 32.0;
     vec3 lm = texture(lightmap, lmcoord).rgb;
-    vec3 blockOnly = max(texture(lightmap, vec2(lmcoord.x, lmMin)).rgb
-                       - texture(lightmap, vec2(lmMin, lmMin)).rgb, vec3(0.0));
+    vec3 lit = albedo.rgb * lm;
+    float fogF = hlFogFactor(playerPos, far, fogStart, fogEnd);
+    outColor = vec4(mix(lit, fogColor, fogF), albedo.a);
 
-#if defined(PASS_FORWARD) || defined(PASS_HAND)
-    float reduce = 0.0;   // forward-lit surfaces keep full vanilla light
-#else
-    float edge = 1.0 - smoothstep(float(VOXEL_HALF) * 0.70, float(VOXEL_HALF) * 0.94, length(playerPos));
-    float reduce = (1.0 - VANILLA_FILL) * edge * (1.0 - emissive);
-#endif
-    vec3 light = max(lm - blockOnly * reduce, vec3(0.0));
-    vec3 lit = albedo.rgb * light;
-
-    // Vanilla-style linear fog (cylinder or sphere).
-    float fogF = 0.0;
-    if (fogMode != 0 && fogEnd > fogStart) {
-        float dist = (fogShape == 1) ? max(length(playerPos.xz), abs(playerPos.y)) : length(playerPos);
-        fogF = clamp((dist - fogStart) / (fogEnd - fogStart), 0.0, 1.0);
-    }
-    lit = mix(lit, fogColor, fogF);
-
-    outColor = vec4(lit, albedo.a);
-
-#ifndef PASS_FORWARD
-    float skyL = clamp((lmcoord.y - lmMin) / (1.0 - 2.0 * lmMin), 0.0, 1.0);
-    vec3 n = normalize(normalWS);
-    float mask = 1.0;   // geometry present (fog is applied to colour only; the mask never depends on fog uniforms)
 #ifdef PASS_HAND
-    mask = 0.0;
+    // Mask stays 0 (written above): deferred returns colortex0 unchanged.
+    return;
 #endif
-    outNormal = vec4(n * 0.5 + 0.5, skyL);
-    outAlbedo = vec4(albedo.rgb, mask);
 
-    // Specular material class. Only the terrain pass knows block ids; entities
-    // and block entities fall back to class 0 (a faint, uniform sheen).
-    float cls = 0.0;
-#ifdef PASS_VOXEL
-    cls = blockMaterialClass(vId);
-#endif
-    outMaterial = vec4(cls / 255.0, 0.0, 0.0, 1.0);
+#ifdef HL_GBUFFER_OUT
+    vec3 skyAmb = texture(lightmap, vec2(lmMin, lmcoord.y)).rgb;
+    vec3 blk = max(texture(lightmap, vec2(lmcoord.x, lmMin)).rgb - texture(lightmap, vec2(lmMin, lmMin)).rgb, vec3(0.0));
+    float skyL = clamp((lmcoord.y - lmMin) / (1.0 - 2.0 * lmMin), 0.0, 1.0);
+    outNormal = vec4(normalize(normalWS) * 0.5 + 0.5, skyL);
+    outAlbedo = vec4(albedo.rgb, emissive > 0.5 ? 0.5 : 1.0);
+    outLight = vec4(skyAmb, dot(blk, vec3(0.3333)));
 #endif
 }

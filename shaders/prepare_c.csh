@@ -1,5 +1,5 @@
 #version 430 compatibility
-// deferred C: bin each light into every 8^3-block cell its range touches.
+// prepare C: bin each light into every 8^3-block cell its range touches.
 layout(local_size_x = 64) in;
 const ivec3 workGroups = ivec3(32, 1, 1);
 
