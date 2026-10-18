@@ -16,6 +16,8 @@
 #define SUN_SHADOWS 1 // [0 1]
 #define SUN_SHADOW_STRENGTH 0.55 // [0.00 0.25 0.40 0.55 0.70 0.90]
 #define SUN_SHADOW_STEPS 32 // [16 24 32 48 64]
+#define SS_SHADOWS 1 // [0 1]
+#define SS_SHADOW_STEPS 20 // [12 20 28 40]
 #define SUN_SPECULAR 0.60 // [0.00 0.20 0.40 0.60 1.00 1.50]
 #define DEBUG_VIEW 0 // [0 1 2 3 4 5]
 

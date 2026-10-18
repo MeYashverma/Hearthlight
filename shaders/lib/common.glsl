@@ -37,7 +37,9 @@ vec3 lightColorFromId(int id) {
     if (id == 10110) return vec3(1.00, 0.62, 0.30); // shroomlight
     if (id == 10111) return vec3(0.62, 0.22, 1.00); // portal / crying obsidian
     if (id == 10112) return vec3(0.35, 0.85, 0.80); // sculk / glow lichen
-    if (id == 10113) return vec3(0.75, 0.50, 1.00); // amethyst
+    if (id == 10113) return vec3(0.75, 0.50, 1.00); // amethyst / enchanting table
+    if (id == 10114) return vec3(0.53, 0.79, 0.35); // copper torch (green flame)
+    if (id == 10115) return vec3(0.60, 0.84, 0.42); // copper lantern (green)
     return vec3(0.0);
 }
 

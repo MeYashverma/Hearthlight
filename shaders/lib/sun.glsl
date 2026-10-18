@@ -26,6 +26,9 @@ layout(r8) readonly uniform image3D voxelOcc;
 vec3 hl_sunDir() { return normalize(mat3(gbufferModelViewInverse) * sunPosition); }
 vec3 hl_moonDir() { return normalize(mat3(gbufferModelViewInverse) * moonPosition); }
 
+// Player space -> view space (the 3x3 of gbufferModelViewInverse is view -> world).
+vec3 hl_worldToView(vec3 v) { return transpose(mat3(gbufferModelViewInverse)) * v; }
+
 // Sunlight reddens and dims toward the horizon; moonlight is a constant blue.
 vec3 hl_sunColor(vec3 dir) {
     float h = clamp(dir.y, 0.0, 1.0);
@@ -34,8 +37,10 @@ vec3 hl_sunColor(vec3 dir) {
 const vec3 HL_MOON_COLOR = vec3(0.50, 0.62, 1.00);
 
 // Direct light: whichever body is above the horizon, blended across twilight.
-// `up` is 0..1 and says how much direct light there is to shadow.
-void hl_direct(out vec3 dir, out vec3 color, out float up) {
+//   up  = 0..1, how much direct light there is to shadow (moonlight is weaker).
+//   day = 0..1, how much of that is the *sun*; drives daylight suppression so
+//         local lights are never dimmed by moonlight.
+void hl_direct(out vec3 dir, out vec3 color, out float up, out float day) {
     vec3 sd = hl_sunDir();
     vec3 md = hl_moonDir();
     float ws = smoothstep(-0.04, 0.06, sd.y);
@@ -44,6 +49,7 @@ void hl_direct(out vec3 dir, out vec3 color, out float up) {
 
     dir = normalize(sd * ws + md * wm);
     color = (hl_sunColor(sd) * ws + HL_MOON_COLOR * wm) / sum;
+    day = (ws / sum) * smoothstep(-0.02, 0.22, sd.y);
     up = smoothstep(-0.02, 0.22, max(sd.y, md.y)) * mix(0.40, 1.0, ws / sum);
 }
 
@@ -51,8 +57,8 @@ void hl_direct(out vec3 dir, out vec3 color, out float up) {
 // Returns transmittance: 0 = fully shadowed, 1 = fully lit.
 float hl_sunVis(vec3 P, vec3 N) {
     vec3 dir, color;
-    float up;
-    hl_direct(dir, color, up);
+    float up, day;
+    hl_direct(dir, color, up, day);
     if (up <= 0.001) return 1.0;
 
     // Step off the surface so the owning cube cannot shadow itself.
@@ -99,8 +105,8 @@ vec3 hl_specular(vec3 N, vec3 playerPos, float vis, float cls) {
     if (strength <= 0.0 || SUN_SPECULAR <= 0.0) return vec3(0.0);
 
     vec3 dir, color;
-    float up;
-    hl_direct(dir, color, up);
+    float up, day;
+    hl_direct(dir, color, up, day);
     if (up <= 0.001) return vec3(0.0);
 
     vec3 L = dir;

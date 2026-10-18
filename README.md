@@ -28,10 +28,24 @@ specular highlight. Everything else (textures, sky, water, clouds, fog, UI) stay
 Light level and emission come straight from Minecraft (`at_midBlock.w`), so modded emitters work;
 known vanilla emitters get hand-picked colours, unknown ones take a hue hint from their texture.
 
-Sun and moon shadows reuse the occupancy volume rather than a second shadow map, so they are
-one ray per pixel and cost nothing extra to set up. Their direction is rebuilt in player space
-from `gbufferModelViewInverse` — Iris' `sunPosition` is in *view* space, and using it directly
-makes the light direction (and therefore every shadow) rotate with the camera.
+Sun and moon shadows come from two sources that are blended per pixel:
+
+* a ray through the same occupancy volume (one ray per pixel, no second shadow pass), which
+  covers everything off screen and at long range;
+* a second ray marched through `depthtex1`, i.e. the real geometry Iris just drew. This is
+  what gives doors, fences, trapdoors, players and dropped items their actual silhouette
+  instead of a 1-block square, and it takes over from the voxel ray once it has walked far
+  enough to be trusted. `depthtex1` rather than `depthtex0` so glass, water and portals do
+  not block sunlight.
+
+Directions are rebuilt in player space from `gbufferModelViewInverse` — Iris' `sunPosition` is
+in *view* space, and using it directly makes the light direction (and therefore every shadow)
+rotate with the camera.
+
+Light-emitting blocks are listed at the bottom of this section so they read as the right
+colour, but the light level always comes from Minecraft, so a block this pack has never heard
+of still lights up (it borrows a hue from its own texture). The list covers every vanilla
+source from level 2 up, including the 1.21.9 copper torch and copper lanterns.
 
 Specular is a GGX lobe with Smith geometry and Schlick Fresnel, tinted by the sun/moon colour
 and masked by the shadow ray. Only full cubes in the specular classes take part, listed at the
@@ -46,7 +60,9 @@ Profiles **Low / Medium / High / Ultra** set the three performance knobs. Indivi
 - **Shadow Softness**: 0 = hard and exact; higher = softer penumbra (temporal smoothing).
 - **Lights Per Pixel** (main perf control), **Shadow Ray Steps**.
 - **Sun Shadows** (on/off), **Sun Shadow Strength** (how much direct light a shadow removes),
-  **Sun Shadow Steps** (how far a shadow ray reaches, see limitations).
+  **Sun Shadow Steps** (how far the voxel ray reaches, see limitations).
+- **Fine Shadows** (on/off) and **Fine Shadow Steps**: the depth-buffer ray that gives doors,
+  fences, players and items their real shadow shape. Turn it off if you see shadow stripes.
 - **Specular** (strength of the sun/moon highlight on the materials above).
 
 ## Debug views (Settings > Debug View)
@@ -63,10 +79,13 @@ Profiles **Low / Medium / High / Ultra** set the three performance knobs. Indivi
 ## Known limitations
 - Occluders are **full-cube faces only**: slabs/stairs count as full blocks; fences, panes, plants, torches do not block. Leaves block ~55%, glass 0%. Entities and block entities neither cast nor receive per-light shadows from voxels (they *are* lit).
 - Diffuse only, no bounce light, no colored flood-fill: light does not wrap around corners except through the vanilla fill.
-- Sun shadows are traced through the same 1-block voxel volume: they are crisp and blocky
-  rather than soft, only exist within 64 blocks of you, and only full cubes cast them.
-  A ray reaching past `Sun Shadow Steps` blocks (about 32 at the default) is treated as lit,
-  which is what makes very low sun angles cast shorter shadows than they should.
+- Sun shadows are a hybrid. The fine (depth-buffer) ray only knows what is on screen: a shadow
+  cast by something behind you falls back to the 1-block voxel shape, and at a very high sun
+  the fine ray leaves the top of the screen after a few blocks, so the voxel square partly
+  returns. Long-range shadows are always voxel-resolution.
+- Local block light is still occluded by the 1-block voxel only. A closed door blocks it
+  completely, but a fence, a pane or a trapdoor blocks or leaks in whole blocks rather than
+  in the shape of its rails.
 - Water and stained glass get vanilla light only (no local lights yet). Particles and clouds are vanilla.
 - Volume is fixed at 128 blocks (+-64). Beyond ~45 blocks lighting blends back to vanilla.
 - More than 32 lights overlapping one 8^3 cell, or 2048 lights in view, drops some lights.
@@ -82,6 +101,8 @@ Profiles **Low / Medium / High / Ultra** set the three performance knobs. Indivi
 - **Torch pools look too dim/bright**: Light Intensity, then Vanilla Fill.
 - **Shimmering penumbrae**: lower Shadow Softness or raise Lights Per Pixel.
 - Light leaks at long range: raise Shadow Ray Steps.
+- **Shadow stripes / acne on the ground**: lower Fine Shadow Steps, or turn Fine Shadows off.
+  The rest of the pack is unaffected.
 - **Sun shadows look wrong or follow the camera**: they should not — the direction is camera
   independent. Check that `SUN_SHADOW_STEPS` is not 0 and that Debug View 3 shows green
   (red means nothing is voxelized, so there is nothing to shadow against).

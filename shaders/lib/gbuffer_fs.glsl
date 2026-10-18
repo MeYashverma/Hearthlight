@@ -8,6 +8,8 @@
 #ifdef PASS_VOXEL
 #include "/lib/lightbuf.glsl"
 #include "/lib/voxelwrite.glsl"
+#elif defined(PASS_VOXEL_EMIT)
+#include "/lib/voxelwrite.glsl"
 #else
 uniform sampler2D gtexture;
 #endif
@@ -27,7 +29,7 @@ in vec4 glcolor;
 in vec3 normalWS;
 in vec3 playerPos;
 flat in float emissive;
-#ifdef PASS_VOXEL
+#if defined(PASS_VOXEL) || defined(PASS_VOXEL_EMIT)
 flat in ivec3 vCell;
 flat in int vId;
 flat in float vLevel;
@@ -55,6 +57,11 @@ void main() {
         && all(greaterThanEqual(vCell, ivec3(0))) && all(lessThan(vCell, ivec3(VOXEL_RES)))) {
         hlWriteVoxel(vCell, vId, vLevel, vCorner, texcoord);
     }
+#endif
+#ifdef PASS_VOXEL_EMIT
+    // Translucent pass: emitters only, never occupancy. Lava, nether portals and
+    // other see-through light sources live here and the shadow pass skips them.
+    hlWriteEmission(vCell, vId, vLevel, texcoord);
 #endif
 
     // Vanilla lightmap, with the block-light part reduced where Hearthlight supplies its own.

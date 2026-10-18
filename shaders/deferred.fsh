@@ -8,6 +8,7 @@
 #include "/lib/common.glsl"
 #include "/lib/lightbuf.glsl"
 #include "/lib/sun.glsl"
+#include "/lib/ssshadow.glsl"
 
 /*
 const int colortex0Format = RGBA16F;
@@ -23,7 +24,6 @@ uniform sampler2D colortex3;
 uniform sampler2D colortex4;
 uniform sampler2D depthtex0;
 
-uniform mat4 gbufferProjectionInverse;
 uniform mat4 gbufferPreviousModelView;
 uniform mat4 gbufferPreviousProjection;
 uniform vec3 cameraPosition;
@@ -182,12 +182,21 @@ void main() {
     // Direction and brightness come from hl_direct(), which rebuilds them in
     // player space; the shadow is a voxel walk toward the light.
     vec3 sunDir, sunCol;
-    float sunUp;
-    hl_direct(sunDir, sunCol, sunUp);
+    float sunUp, sunDay;
+    hl_direct(sunDir, sunCol, sunUp, sunDay);
     float NoL = saturate(dot(N, sunDir));
     float vis = 1.0;
 #if SUN_SHADOWS
-    if (inVolume && sunUp > 0.001 && NoL > 0.001) vis = hl_sunVis(P, N);
+    if (sunUp > 0.001 && NoL > 0.001) {
+        if (inVolume) vis = hl_sunVis(P, N);
+#if SS_SHADOWS
+        // The depth buffer knows the real shape of doors, fences, players and
+        // dropped items; where it can answer, it overrides the 1-block voxel.
+        vec2 ss = hl_ssSunShadow(viewPos, hl_worldToView(sunDir));
+        if (ss.x < 0.5) vis = 0.0;
+        else vis = mix(vis, 1.0, ss.y);
+#endif
+    }
 #endif
     // How much direct sunlight this pixel is missing. Gated by sky light so
     // caves and interiors (already dark in vanilla) are left alone.
@@ -235,7 +244,7 @@ void main() {
     }
 
     // Daylight makes local lights less dominant; darkness does not.
-    irr *= LIGHT_INTENSITY * (1.0 - DAY_SUPPRESS * skyL * sunUp);
+    irr *= LIGHT_INTENSITY * (1.0 - DAY_SUPPRESS * skyL * sunDay);
 
     // --- temporal accumulation ---------------------------------------------
     vec3 prevView = (gbufferPreviousModelView * vec4(playerPos + cameraPosition - previousCameraPosition, 1.0)).xyz;

@@ -124,16 +124,17 @@ def normalize(v):
     return v / n if n > 1e-9 else v
 
 
-def direct_light(sun_dir, moon_dir) -> tuple[np.ndarray, float, float]:
-    """Port of hl_direct(): direction, sun weight, direct-light amount."""
+def direct_light(sun_dir, moon_dir) -> tuple[np.ndarray, float, float, float]:
+    """Port of hl_direct(): direction, direct amount, sun-only amount, sun share."""
     sd = normalize(sun_dir)
     md = normalize(moon_dir)
     ws = smoothstep(-0.04, 0.06, sd[1])
     wm = smoothstep(-0.04, 0.06, md[1])
     total = max(ws + wm, 1e-3)
     direction = normalize(sd * ws + md * wm)
+    day = (ws / total) * smoothstep(-0.02, 0.22, sd[1])
     up = smoothstep(-0.02, 0.22, max(sd[1], md[1])) * (0.40 + 0.60 * (ws / total))
-    return direction, up, ws / total
+    return direction, up, day, ws / total
 
 
 def rot_y(angle: float) -> np.ndarray:
@@ -171,6 +172,41 @@ def sun_vis(volume: np.ndarray, P, N, direction, steps: int) -> float:
         if trans < 0.02:
             return 0.0
     return trans
+
+
+def ss_sun_shadow(view_pos, dir_view, sample, cam_f=0.35, steps=20,
+                  start=0.12, thickness=0.28, max_dist=32.0):
+    """Port of hl_ssSunShadow(). `sample(uv)` returns a scene depth in view
+    units, or None for empty sky; `cam_f` is the focal length of the synthetic
+    pinhole camera used to project the ray."""
+    p = np.asarray(view_pos, dtype=float) + np.asarray(dir_view, dtype=float) * start
+    d = normalize(dir_view)
+    step_len = 0.18
+    travelled = 0.0
+
+    for _ in range(steps):
+        dt = min(step_len, max_dist - travelled)
+        if dt <= 1e-4:
+            break
+        p = p + d * dt
+        travelled += dt
+        step_len *= 1.25
+
+        ray_z = -p[2]
+        if ray_z <= 0.05:
+            break
+
+        uv = (p[0] / ray_z * cam_f + 0.5, p[1] / ray_z * cam_f + 0.5)
+        if not (0.0 <= uv[0] <= 1.0 and 0.0 <= uv[1] <= 1.0):
+            break
+
+        depth = sample(uv)
+        if depth is None:
+            continue
+        if ray_z - depth > thickness + 0.012 * travelled:
+            return 0.0, 1.0
+
+    return 1.0, smoothstep(1.5, 6.0, travelled)
 
 
 def shadow_amount(sky_light, NoL, vis, sun_up, strength) -> float:
@@ -302,11 +338,14 @@ def test_ids() -> None:
     items = item_properties()
     print("\nblock / item ids")
 
-    known = {10001, 10002} | set(range(10100, 10114)) | {10200, 10201, 10202, 10203}
+    known = {10001, 10002} | set(range(10100, 10116)) | {10200, 10201, 10202, 10203}
     check("block.properties only uses documented ids",
           set(blocks) <= known, ", ".join(str(i) for i in sorted(set(blocks) - known)))
-    check("every id from 10100..10113 has a colour",
-          all(i in colours for i in range(10100, 10114)))
+    check("every id from 10100..10115 has a colour",
+          all(i in colours for i in range(10100, 10116)))
+    green = colours.get(10114, (1.0, 0.0, 0.0))
+    check("copper light is green, not warm", green[1] > green[0] and green[1] > green[2],
+          f"{green}")
     check("every material id has a class",
           all(i in materials for i in (10200, 10201, 10202, 10203)))
     check("material classes are unique",
@@ -321,7 +360,7 @@ def test_ids() -> None:
             seen[n] = cid
     check("no block is assigned to two classes", not dupes, ", ".join(dupes[:6]))
     check("emitter classes are not empty",
-          all(len(blocks.get(i, [])) > 0 for i in range(10100, 10114)))
+          all(len(blocks.get(i, [])) > 0 for i in range(10100, 10116)))
     check("item ids all resolve to a colour",
           all(i in colours for i in items), ", ".join(str(i) for i in sorted(set(items) - set(colours))))
 
@@ -346,7 +385,7 @@ def test_sun_geometry() -> None:
         moon_position = R @ (world_moon * 100.0)
         sd = R.T @ sun_position                          # gbufferModelViewInverse
         md = R.T @ moon_position
-        d, up, _ = direct_light(sd, md)
+        d, up, _, _ = direct_light(sd, md)
         dirs.append(d)
         ups.append(up)
     check("sun direction is independent of camera yaw",
@@ -360,30 +399,32 @@ def test_sun_geometry() -> None:
     midnight_sun = np.array([0.0, -1.0, 0.0])
     midnight_moon = np.array([0.0, 1.0, 0.0])
 
-    d, up, sun_share = direct_light(noon_sun, noon_moon)
+    d, up, day, sun_share = direct_light(noon_sun, noon_moon)
     check("noon light comes from above", d[1] > 0.999 and up > 0.99, f"up={up:.3f}")
     check("noon is sunlight", sun_share > 0.99)
+    check("daylight suppression is full at noon", day > 0.99, f"day={day:.3f}")
 
-    d, up, sun_share = direct_light(midnight_sun, midnight_moon)
+    d, up, day_night, sun_share = direct_light(midnight_sun, midnight_moon)
     check("midnight light comes from the moon", d[1] > 0.999)
     check("midnight direct light is faint", 0.30 < up < 0.50, f"up={up:.3f}")
     check("midnight is moonlight", sun_share < 0.01)
+    check("moonlight never suppresses local lights", day_night < 0.001, f"day={day_night:.3f}")
 
     # Daytime fades out as the sun approaches the horizon, and the handover to
     # the moon crosses a single dip rather than jumping.
-    _, up_noon, _ = direct_light(noon_sun, noon_moon)
-    _, up_half, _ = direct_light(np.array([0.0, 0.1, 0.995]), np.array([0.0, -0.1, -0.995]))
-    _, up_set, _ = direct_light(np.array([0.0, 0.0, 1.0]), np.array([0.0, 0.0, -1.0]))
+    _, up_noon, _, _ = direct_light(noon_sun, noon_moon)
+    _, up_half, _, _ = direct_light(np.array([0.0, 0.1, 0.995]), np.array([0.0, -0.1, -0.995]))
+    _, up_set, _, _ = direct_light(np.array([0.0, 0.0, 1.0]), np.array([0.0, 0.0, -1.0]))
     check("direct light fades toward the horizon", up_noon > up_half > up_set,
           f"{up_noon:.2f} > {up_half:.2f} > {up_set:.2f}")
-    _, up_just_set, _ = direct_light(np.array([0.0, -0.05, 1.0]), np.array([0.0, 0.05, -1.0]))
+    _, up_just_set, _, _ = direct_light(np.array([0.0, -0.05, 1.0]), np.array([0.0, 0.05, -1.0]))
     check("the handover to moonlight is continuous", abs(up_just_set - up_set) < 0.12,
           f"{up_set:.2f} -> {up_just_set:.2f}")
 
-    d, up, _ = direct_light(np.array([0.0, -0.05, 1.0]), np.array([0.0, 0.05, -1.0]))
+    d, up, _, _ = direct_light(np.array([0.0, -0.05, 1.0]), np.array([0.0, 0.05, -1.0]))
     check("sun just below the horizon contributes no direct light", up < 0.15, f"up={up:.3f}")
 
-    _, up_night, _ = direct_light(midnight_sun, midnight_moon)
+    _, up_night, _, _ = direct_light(midnight_sun, midnight_moon)
     check("shadow strength at night is weaker than at noon",
           s["SUN_SHADOW_STRENGTH"] * up_night < 0.5 * s["SUN_SHADOW_STRENGTH"])
 
@@ -446,7 +487,7 @@ def test_sun_shadows() -> None:
           sun_vis(far, P, up, low, steps) > 0.99,
           "raise SUN_SHADOW_STEPS for longer shadows")
 
-    _, up_moon, _ = direct_light(np.array([0.0, -1.0, 0.0]), np.array([0.0, 1.0, 0.0]))
+    _, up_moon, _, _ = direct_light(np.array([0.0, -1.0, 0.0]), np.array([0.0, 1.0, 0.0]))
     check("moonlight still traces shadows", up_moon > 0.3, f"up={up_moon:.3f}")
 
     check("full sunlight on open ground removes the configured amount",
@@ -508,6 +549,59 @@ def test_specular() -> None:
     check("specular is finite for all angles and classes", finite)
 
 
+def test_screen_space_shadows() -> None:
+    s = settings()
+    print("\nfine sun shadows (screen space)")
+
+    # Camera at the origin looking down -Z; a surface two blocks ahead.
+    surface = np.array([0.0, -1.0, -2.0])
+    up_sun = normalize([0.0, 0.9, -0.3])
+
+    low_sun = normalize([0.0, 0.34, -0.94])
+    empty = lambda uv: None
+    vis, cov = ss_sun_shadow(surface, low_sun, empty)
+    check("an empty screen leaves the surface lit", vis > 0.99, f"vis={vis:.3f}")
+    check("a ray that stays on screen is fully trusted", cov > 0.99, f"confidence={cov:.2f}")
+
+    # A big flat wall at 4 blocks in front of the camera.
+    wall = lambda uv: 4.0
+    vis, cov = ss_sun_shadow(surface, low_sun, wall)
+    check("a wall in the ray path shadows the surface", vis < 0.01, f"vis={vis:.3f}")
+
+    # Sun behind the camera: the ray cannot be traced, confidence must fall to
+    # 0 so that the voxel shadow is used instead.
+    vis, cov = ss_sun_shadow(surface, normalize([0.0, 0.9, 0.4]), empty)
+    check("a sun behind the camera is barely trusted", cov < 0.35, f"confidence={cov:.2f}")
+    check("an untraceable ray never reports a false shadow", vis > 0.99)
+
+    # Straight overhead: the ray leaves the top of the screen after ~3 blocks,
+    # so the voxel shadow keeps the long-range shadows.
+    vis, cov = ss_sun_shadow(surface, np.array([0.0, 1.0, 0.0]), empty)
+    check("an overhead sun only gets partial confidence", 0.05 < cov < 0.85, f"confidence={cov:.2f}")
+
+    # Thin geometry: a 0.19-block slab (a door is 3/16) that only exists in a
+    # narrow window of the screen.
+    def door(uv):
+        return 2.4 if abs(uv[0] - 0.5) < 0.02 and uv[1] > 0.5 else None
+
+    hit = False
+    for i in range(40):
+        ang = 0.6 + i * 0.02
+        d = normalize([0.0, math.sin(ang), -math.cos(ang)])
+        vis, cov = ss_sun_shadow(surface, d, door)
+        if vis < 0.5:
+            hit = True
+            break
+    check("thin geometry (a door panel) can cast a fine shadow", hit)
+
+    # A surface the ray moves *towards* must not shadow itself.
+    toward = normalize([0.0, -0.2, 0.9])
+    vis, cov = ss_sun_shadow(surface, toward, wall)
+    check("no self-shadowing when the ray points away from the wall", vis > 0.99, f"vis={vis:.3f}")
+
+    check("SS_SHADOWS is exposed", "SS_SHADOWS" in s and "SS_SHADOW_STEPS" in s)
+
+
 def test_ranking() -> None:
     c = consts()
     s = settings()
@@ -562,6 +656,7 @@ def main() -> int:
     test_sun_geometry()
     test_sun_shadows()
     test_specular()
+    test_screen_space_shadows()
     test_ranking()
     test_light_falloff()
 

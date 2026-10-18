@@ -5,7 +5,7 @@
 #ifdef PASS_TERRAIN
 in vec4 at_midBlock;
 #endif
-#ifdef PASS_VOXEL
+#if defined(PASS_VOXEL) || defined(PASS_VOXEL_EMIT)
 in vec4 mc_Entity;
 uniform vec3 cameraPositionFract;
 flat out ivec3 vCell;
@@ -34,7 +34,7 @@ void main() {
 
 #ifdef PASS_TERRAIN
     emissive = at_midBlock.w > 0.5 ? 1.0 : 0.0;
-#ifdef PASS_VOXEL
+#if defined(PASS_VOXEL) || defined(PASS_VOXEL_EMIT)
     {
         vec3 toCentre = at_midBlock.xyz / 64.0;
         vec3 centreRel = playerPos + toCentre + cameraPositionFract;
